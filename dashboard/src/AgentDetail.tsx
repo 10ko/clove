@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { cancelAgent, sendInput, stopAgent, streamAgentUrl, vscodeUrlForPath } from './api';
 import type { AgentRecord, StreamEnvelope } from './api';
-import { IconBranch, IconCheck, IconClose, IconCopy, IconVscode } from './Icons';
+import { avatarDataUri } from './avatar';
 import { ConfirmModal } from './ConfirmModal';
+import { IconBranch, IconCheck, IconClose, IconCopy, IconVscode } from './Icons';
 
 interface Props {
   agentId: string;
@@ -146,7 +147,14 @@ export function AgentDetail({ agentId, agent, onClose, onStop }: Props) {
     <div style={overlayStyle} onClick={onClose}>
       <div style={panelStyle} onClick={(e) => e.stopPropagation()}>
         <div style={headerStyle}>
-          <div style={headerTitleBlockStyle}>
+          <img
+            src={avatarDataUri(agentId)}
+            alt=""
+            width={56}
+            height={56}
+            style={headerAvatarStyle}
+          />
+          <div style={headerContentColumnStyle}>
             <div style={nameRowStyle}>
               <h2 style={titleStyle}>{agentId}</h2>
               {agent?.agentState != null && (
@@ -183,9 +191,11 @@ export function AgentDetail({ agentId, agent, onClose, onStop }: Props) {
               </div>
             )}
           </div>
-          <button type="button" onClick={onClose} style={closeBtnStyle} title="Close">
-            <IconClose />
-          </button>
+          <div style={closeBtnWrapStyle}>
+            <button type="button" onClick={onClose} style={closeBtnStyle} title="Close">
+              <IconClose size={22} />
+            </button>
+          </div>
         </div>
 
         <div style={actionsBarStyle}>
@@ -270,7 +280,7 @@ export function AgentDetail({ agentId, agent, onClose, onStop }: Props) {
 const overlayStyle: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
-  background: 'rgba(0, 0, 0, 0.6)',
+  background: 'rgba(0, 0, 0, 0.72)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -280,8 +290,8 @@ const overlayStyle: React.CSSProperties = {
 
 const panelStyle: React.CSSProperties = {
   width: '100%',
-  maxWidth: '56rem',
-  maxHeight: '90vh',
+  maxWidth: '72rem',
+  maxHeight: '92vh',
   display: 'flex',
   flexDirection: 'column',
   background: '#1e293b',
@@ -293,22 +303,31 @@ const panelStyle: React.CSSProperties = {
 const headerStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'flex-start',
-  justifyContent: 'space-between',
-  padding: '1rem 1.25rem',
+  gap: '0.75rem',
+  padding: '1.25rem 0.75rem',
   borderBottom: '1px solid #334155',
+};
+
+const headerAvatarStyle: React.CSSProperties = {
+  width: 56,
+  height: 56,
+  borderRadius: '50%',
+  flexShrink: 0,
+  objectFit: 'cover',
+};
+
+const headerContentColumnStyle: React.CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.35rem',
 };
 
 const titleStyle: React.CSSProperties = {
   margin: 0,
   fontSize: '1.25rem',
   fontWeight: 600,
-};
-
-const headerTitleBlockStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '0.35rem',
-  minWidth: 0,
 };
 
 const nameRowStyle: React.CSSProperties = {
@@ -329,10 +348,12 @@ const headerPathRowStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: '0.35rem',
   minWidth: 0,
+  overflow: 'hidden',
 };
 
 const headerPathStyle: React.CSSProperties = {
-  flex: 1,
+  flex: '0 1 auto',
+  minWidth: 0,
   fontSize: '0.8125rem',
   color: '#94a3b8',
   overflow: 'hidden',
@@ -386,13 +407,18 @@ function agentStateBadgeStyle(agentState: 'busy' | 'waiting'): React.CSSProperti
   };
 }
 
-const closeBtnStyle: React.CSSProperties = {
+const closeBtnWrapStyle: React.CSSProperties = {
   flexShrink: 0,
+  marginLeft: 'auto',
+  alignSelf: 'flex-start',
+};
+
+const closeBtnStyle: React.CSSProperties = {
   display: 'inline-flex',
-  alignItems: 'center',
+  alignItems: 'flex-start',
   justifyContent: 'center',
-  width: '2rem',
-  height: '2rem',
+  width: '2.5rem',
+  height: '2.5rem',
   padding: 0,
   border: 'none',
   borderRadius: '0.25rem',
@@ -425,25 +451,6 @@ const stopBtnStyle: React.CSSProperties = {
   background: 'transparent',
   color: '#94a3b8',
   cursor: 'pointer',
-};
-
-const iconBtnStyle: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  width: '2rem',
-  height: '2rem',
-  padding: 0,
-  borderRadius: '0.25rem',
-  border: '1px solid #334155',
-  background: 'transparent',
-  color: '#94a3b8',
-  cursor: 'pointer',
-};
-
-const actionLinkStyle: React.CSSProperties = {
-  ...iconBtnStyle,
-  textDecoration: 'none',
 };
 
 const actionLinkWithTextStyle: React.CSSProperties = {
@@ -511,7 +518,7 @@ const preStyle: React.CSSProperties = {
   whiteSpace: 'pre-wrap',
   wordBreak: 'break-word',
   minHeight: '16rem',
-  maxHeight: '36rem',
+  maxHeight: '44rem',
 };
 
 const streamErrorStyle: React.CSSProperties = {

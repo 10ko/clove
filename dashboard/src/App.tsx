@@ -78,7 +78,6 @@ export default function App() {
             agents={agents}
             selectedId={selectedId}
             onSelect={setSelectedId}
-            onStop={refresh}
           />
         )}
 

@@ -1,35 +1,14 @@
-import { useState } from 'react';
-import { stopAgent, vscodeUrlForPath, type AgentRecord } from './api';
-import { IconStop, IconVscode } from './Icons';
-import { ConfirmModal } from './ConfirmModal';
+import type { AgentRecord } from './api';
+import { avatarDataUri } from './avatar';
+import { IconBranch } from './Icons';
 
 interface Props {
   agents: AgentRecord[];
   selectedId: string | null;
   onSelect: (id: string) => void;
-  onStop: () => void;
 }
 
-export function AgentList({ agents, selectedId, onSelect, onStop }: Props) {
-  const [stopConfirmAgentId, setStopConfirmAgentId] = useState<string | null>(null);
-
-  function handleStopClick(e: React.MouseEvent, agentId: string) {
-    e.stopPropagation();
-    setStopConfirmAgentId(agentId);
-  }
-
-  async function handleStopConfirm() {
-    if (!stopConfirmAgentId) return;
-    try {
-      await stopAgent(stopConfirmAgentId);
-      onStop();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : String(err));
-    } finally {
-      setStopConfirmAgentId(null);
-    }
-  }
-
+export function AgentList({ agents, selectedId, onSelect }: Props) {
   return (
     <section>
       <h2 style={sectionHeadingStyle}>Agents</h2>
@@ -51,62 +30,48 @@ export function AgentList({ agents, selectedId, onSelect, onStop }: Props) {
               ...(selectedId === a.agentId ? cardSelectedStyle : {}),
             }}
           >
-            <div style={cardHeaderStyle}>
-              <span style={cardIdStyle}>{a.agentId}</span>
-              <div style={badgesStyle}>
-                <span style={statusBadgeStyle(a.status)}>{a.status}</span>
-                {a.agentState && (
-                  <span style={agentStateBadgeStyle(a.agentState)}>{a.agentState}</span>
-                )}
+            <div style={cardHeaderWrapperStyle}>
+              <div style={cardHeaderStyle}>
+                <div style={cardAvatarWrapStyle}>
+                  <img
+                    src={avatarDataUri(a.agentId)}
+                    alt=""
+                    width={56}
+                    height={56}
+                    style={cardAvatarStyle}
+                  />
+                </div>
+                <div style={cardNameTagsBlockStyle}>
+                  <span style={cardIdStyle}>{a.agentId}</span>
+                  <div style={cardTagsRowStyle}>
+                    {a.agentState != null && (
+                      <span style={cardAgentStateBadgeStyle(a.agentState)}>{a.agentState}</span>
+                    )}
+                    <span style={cardTagStyle}>{a.runtimeKey}</span>
+                    <span style={cardTagStyle}>{a.pluginKey}</span>
+                  </div>
+                </div>
               </div>
             </div>
-            <div style={cardMetaStyle}>
-              {a.runtimeKey} / {a.pluginKey}
-            </div>
-            <div style={cardPathStyle} title={a.workspacePath}>
-              {a.workspacePath}
-            </div>
-            <div style={cardActionsStyle}>
-              <a
-                href={vscodeUrlForPath(a.workspacePath)}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                style={cardIconLinkStyle}
-                title="Open workspace in VS Code"
-              >
-                <IconVscode />
-              </a>
-              <button
-                type="button"
-                onClick={(e) => handleStopClick(e, a.agentId)}
-                style={cardIconBtnStyle}
-                title="Stop agent"
-              >
-                <IconStop />
-              </button>
+            <div style={cardFooterStyle}>
+              {a.branch != null && a.branch !== '' ? (
+                <div style={cardBranchRowStyle}>
+                  <IconBranch size={14} />
+                  <span style={cardBranchStyle}>{a.branch}</span>
+                </div>
+              ) : <span />}
+              <span style={cardArrowStyle} aria-hidden>→</span>
             </div>
           </article>
         ))}
       </div>
-
-      <ConfirmModal
-        isOpen={stopConfirmAgentId != null}
-        onClose={() => setStopConfirmAgentId(null)}
-        onConfirm={handleStopConfirm}
-        title="Stop agent?"
-        message="The agent's workspace folder will be removed and its branch deleted. Any uncommitted changes will be lost."
-        confirmLabel="Stop agent"
-        cancelLabel="Cancel"
-        variant="danger"
-      />
     </section>
   );
 }
 
 const sectionHeadingStyle: React.CSSProperties = {
   margin: '0 0 1rem',
-  fontSize: '1rem',
+  fontSize: '1.125rem',
   fontWeight: 600,
   color: '#e2e8f0',
 };
@@ -118,7 +83,7 @@ const gridStyle: React.CSSProperties = {
 };
 
 const cardStyle: React.CSSProperties = {
-  padding: '1rem',
+  padding: '1.125rem',
   borderRadius: '0.5rem',
   background: '#1e293b',
   border: '1px solid #334155',
@@ -130,6 +95,22 @@ const cardStyle: React.CSSProperties = {
   transition: 'border-color 0.15s, box-shadow 0.15s',
 };
 
+const cardHeaderWrapperStyle: React.CSSProperties = {
+  flex: 1,
+  display: 'flex',
+  alignItems: 'center',
+  minHeight: 0,
+};
+
+const cardFooterStyle: React.CSSProperties = {
+  marginTop: 'auto',
+  paddingTop: '1.25rem',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '0.5rem',
+};
+
 const cardSelectedStyle: React.CSSProperties = {
   borderColor: '#38bdf8',
   boxShadow: '0 0 0 2px rgba(56, 189, 248, 0.25)',
@@ -137,85 +118,94 @@ const cardSelectedStyle: React.CSSProperties = {
 
 const cardHeaderStyle: React.CSSProperties = {
   display: 'flex',
-  flexDirection: 'column',
-  gap: '0.5rem',
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: '0.75rem',
   minWidth: 0,
+};
+
+const cardAvatarWrapStyle: React.CSSProperties = {
+  width: 56,
+  height: 56,
+  flexShrink: 0,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingTop: 10,
+  lineHeight: 0,
+  overflow: 'hidden',
+};
+
+const cardAvatarStyle: React.CSSProperties = {
+  display: 'block',
+  width: 56,
+  height: 56,
+  borderRadius: '50%',
+  objectFit: 'cover',
+};
+
+const cardNameTagsBlockStyle: React.CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  justifyContent: 'center',
+  gap: '0.35rem',
 };
 
 const cardIdStyle: React.CSSProperties = {
   fontWeight: 600,
-  fontSize: '0.9375rem',
+  fontSize: '1.0625rem',
   color: '#e2e8f0',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
 };
 
-const badgesStyle: React.CSSProperties = {
+const cardTagsRowStyle: React.CSSProperties = {
   display: 'flex',
   flexWrap: 'wrap',
+  alignItems: 'center',
   gap: '0.35rem',
 };
 
-function statusBadgeStyle(status: string): React.CSSProperties {
-  const isRunning = status === 'running';
-  return {
-    fontSize: '0.7rem',
-    padding: '0.15rem 0.4rem',
-    borderRadius: '0.25rem',
-    background: isRunning ? 'rgba(34, 197, 94, 0.2)' : '#334155',
-    color: isRunning ? '#22c55e' : '#94a3b8',
-  };
-}
+const cardTagStyle: React.CSSProperties = {
+  fontSize: '0.8125rem',
+  padding: '0.2rem 0.5rem',
+  borderRadius: '0.25rem',
+  background: 'rgba(100, 116, 139, 0.25)',
+  color: '#94a3b8',
+  textTransform: 'capitalize',
+};
 
-function agentStateBadgeStyle(agentState: 'busy' | 'waiting'): React.CSSProperties {
+function cardAgentStateBadgeStyle(agentState: 'busy' | 'waiting'): React.CSSProperties {
   return {
-    fontSize: '0.7rem',
-    padding: '0.15rem 0.4rem',
+    fontSize: '0.8125rem',
+    padding: '0.2rem 0.5rem',
     borderRadius: '0.25rem',
     background: agentState === 'busy' ? 'rgba(251, 191, 36, 0.2)' : 'rgba(34, 197, 94, 0.2)',
     color: agentState === 'busy' ? '#fbbf24' : '#22c55e',
   };
 }
 
-const cardMetaStyle: React.CSSProperties = {
-  fontSize: '0.75rem',
+const cardBranchRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.35rem',
   color: '#64748b',
+  minWidth: 0,
+  overflow: 'hidden',
 };
 
-const cardPathStyle: React.CSSProperties = {
-  flex: 1,
-  fontSize: '0.8125rem',
-  color: '#94a3b8',
+const cardBranchStyle: React.CSSProperties = {
+  fontSize: '0.875rem',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
-  minHeight: 0,
 };
 
-const cardActionsStyle: React.CSSProperties = {
-  display: 'flex',
-  gap: '0.5rem',
-  marginTop: '0.25rem',
-  paddingTop: '0.5rem',
-  borderTop: '1px solid #334155',
-};
-
-const cardIconBtnStyle: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  width: '1.75rem',
-  height: '1.75rem',
-  padding: 0,
-  borderRadius: '0.25rem',
-  border: '1px solid #334155',
-  background: 'transparent',
-  color: '#94a3b8',
-  cursor: 'pointer',
-};
-
-const cardIconLinkStyle: React.CSSProperties = {
-  ...cardIconBtnStyle,
-  textDecoration: 'none',
+const cardArrowStyle: React.CSSProperties = {
+  fontSize: '1.125rem',
+  color: '#64748b',
+  flexShrink: 0,
 };
