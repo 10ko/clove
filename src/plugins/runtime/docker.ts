@@ -4,7 +4,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import type { AgentId, AgentPlugin, AgentRuntime } from '../../types.js';
+import type { AgentId, AgentPlugin, AgentRuntime, StreamEnvelope } from '../../types.js';
 
 export interface DockerRuntimeOptions {
   /** Docker image to run. Default: node:20-bookworm-slim */
@@ -15,12 +15,12 @@ export interface DockerRuntimeOptions {
 
 /** Queue that buffers stream chunks and supports replay (same as local runtime). */
 class StreamQueue {
-  private readonly replay: string[] = [];
+  private readonly replay: StreamEnvelope[] = [];
   private readonly waiters: Array<() => void> = [];
   private done = false;
 
-  push(chunk: string): void {
-    this.replay.push(chunk);
+  push(envelope: StreamEnvelope): void {
+    this.replay.push(envelope);
     for (const w of this.waiters) w();
     this.waiters.length = 0;
   }
@@ -37,7 +37,7 @@ class StreamQueue {
     });
   }
 
-  async *drain(): AsyncIterable<string> {
+  async *drain(): AsyncIterable<StreamEnvelope> {
     let i = 0;
     while (true) {
       if (i < this.replay.length) {
@@ -101,10 +101,10 @@ export function createDockerRuntime(
       );
 
       child.stdout?.on('data', (data: Buffer) => {
-        queue.push(data.toString());
+        queue.push({ type: 'agent', payload: data.toString() });
       });
       child.stderr?.on('data', (data: Buffer) => {
-        queue.push(data.toString());
+        queue.push({ type: 'log', payload: data.toString() });
       });
 
       const processExitPromise = new Promise<number | null>((resolve) => {
@@ -115,7 +115,7 @@ export function createDockerRuntime(
       });
 
       child.on('error', (err) => {
-        queue.push(`[docker error] ${err.message}\n`);
+        queue.push({ type: 'log', payload: `[docker error] ${err.message}\n` });
         queue.close();
       });
 
@@ -145,7 +145,7 @@ export function createDockerRuntime(
       await entry.processExitPromise;
     },
 
-    async *streamLogs(agentId: AgentId): AsyncIterable<string> {
+    async *streamLogs(agentId: AgentId): AsyncIterable<StreamEnvelope> {
       const entry = entries.get(agentId);
       if (!entry) return;
       yield* entry.queue.drain();

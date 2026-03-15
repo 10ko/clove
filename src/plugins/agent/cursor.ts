@@ -7,7 +7,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import * as path from 'node:path';
-import type { AgentContext, AgentId, AgentPlugin } from '../../types.js';
+import type { AgentContext, AgentId, AgentPlugin, StreamEnvelope } from '../../types.js';
 
 export interface CursorAgentOptions {
   /** Command to run (default: 'agent'). Use full path if not in PATH. */
@@ -27,6 +27,8 @@ interface AcpSession {
   sendPrompt: (text: string) => Promise<void>;
   /** Push a line into the stream (e.g. "[Follow-up sent.]") for user feedback. */
   pushFeedback?: (line: string) => void;
+  /** Push user message into the stream (shown right-aligned in UI). */
+  pushUserMessage?: (payload: string) => void;
 }
 
 function isCursorCliInstalled(command: string): boolean {
@@ -55,7 +57,7 @@ function runCursorStreamAcp(
   context: AgentContext,
   options: CursorAgentOptions,
   acpSessionByAgent: Map<AgentId, AcpSession>
-): AsyncIterable<string> {
+): AsyncIterable<StreamEnvelope> {
   const command = options.command ?? 'agent';
   const extraArgs = options.extraArgs ?? [];
   const agentId = context.agentId;
@@ -76,7 +78,7 @@ function runCursorStreamAcp(
         env: { ...process.env },
       });
 
-      const queue: string[] = [];
+      const queue: StreamEnvelope[] = [];
       let ended = false;
       let resolveWait: (() => void) | null = null;
       const waitNext = (): Promise<void> =>
@@ -84,9 +86,9 @@ function runCursorStreamAcp(
           if (queue.length > 0 || ended) return void resolve();
           resolveWait = resolve;
         });
-      const push = (chunk: string): void => {
-        if (!chunk) return;
-        queue.push(chunk);
+      const push = (envelope: StreamEnvelope): void => {
+        if (!envelope.payload) return;
+        queue.push(envelope);
         if (resolveWait) {
           resolveWait();
           resolveWait = null;
@@ -95,7 +97,7 @@ function runCursorStreamAcp(
 
       const cleanup = (exitCode?: number): void => {
         acpSessionByAgent.delete(agentId);
-        push('\n[ACP process exited' + (exitCode != null ? ` with code ${exitCode}` : '') + '.]\n');
+        push({ type: 'log', payload: '\n[ACP process exited' + (exitCode != null ? ` with code ${exitCode}` : '') + '.]\n' });
         ended = true;
         if (resolveWait) {
           resolveWait();
@@ -140,7 +142,7 @@ function runCursorStreamAcp(
             const msg = JSON.parse(line) as {
               id?: number;
               method?: string;
-              params?: { update?: { sessionUpdate?: string; content?: { text?: string } } };
+              params?: { update?: { sessionUpdate?: string; content?: { text?: string }; text?: string } };
               result?: unknown;
               error?: { message?: string };
             };
@@ -156,9 +158,12 @@ function runCursorStreamAcp(
               const update = msg.params?.update as { sessionUpdate?: string; content?: { text?: string }; text?: string } | undefined;
               const text = update?.content?.text ?? update?.text;
               if (typeof text === 'string') {
-                push(text);
+                const kind = update?.sessionUpdate === 'agent_thought_chunk' ? 'reasoning' : 'agent';
+                push({ type: kind, payload: text });
               } else if (update?.sessionUpdate === 'agent_message_chunk' && update?.content?.text) {
-                push(update.content.text);
+                push({ type: 'agent', payload: update.content.text });
+              } else if (update?.sessionUpdate === 'agent_thought_chunk' && update?.content?.text) {
+                push({ type: 'reasoning', payload: update.content.text });
               }
               continue;
             }
@@ -183,14 +188,14 @@ function runCursorStreamAcp(
               continue;
             }
           } catch {
-            push(line + '\n');
+            push({ type: 'log', payload: line + '\n' });
           }
         }
       });
 
       child.stderr?.on('data', (data: Buffer | string) => {
         const s = typeof data === 'string' ? data : data.toString();
-        push('[stderr] ' + s);
+        push({ type: 'log', payload: '[stderr] ' + s });
       });
 
       const workspacePath = context.workspacePath;
@@ -263,7 +268,8 @@ function runCursorStreamAcp(
         acpSessionByAgent.set(agentId, {
           sessionId,
           sendPrompt,
-          pushFeedback: (line) => push(line),
+          pushFeedback: (line) => push({ type: 'agent', payload: line }),
+          pushUserMessage: (payload) => push({ type: 'user', payload }),
         });
         if (stateRef) stateRef.current = 'busy';
         sendPrompt(prompt).catch(() => {});
@@ -275,8 +281,8 @@ function runCursorStreamAcp(
       while (queue.length > 0 || !ended) {
         await waitNext();
         while (queue.length > 0) {
-          const chunk = queue.shift();
-          if (chunk) yield chunk;
+          const envelope = queue.shift();
+          if (envelope) yield envelope;
         }
       }
     },
@@ -288,7 +294,7 @@ function runCursorStreamNonInteractive(
   prompt: string,
   context: AgentContext,
   options: CursorAgentOptions
-): AsyncIterable<string> {
+): AsyncIterable<StreamEnvelope> {
   const command = options.command ?? 'agent';
   const extraArgs = options.extraArgs ?? [];
   const resolvedCommand = resolveCommandToPath(command);
@@ -308,7 +314,7 @@ function runCursorStreamNonInteractive(
         env: { ...process.env },
       });
 
-      const queue: string[] = [];
+      const queue: StreamEnvelope[] = [];
       let ended = 0;
       let resolveWait: (() => void) | null = null;
       const waitNext = (): Promise<void> =>
@@ -316,8 +322,8 @@ function runCursorStreamNonInteractive(
           if (queue.length > 0 || ended >= 2) return void resolve();
           resolveWait = resolve;
         });
-      const push = (chunk: string): void => {
-        queue.push(chunk);
+      const push = (envelope: StreamEnvelope): void => {
+        queue.push(envelope);
         if (resolveWait) {
           resolveWait();
           resolveWait = null;
@@ -325,10 +331,10 @@ function runCursorStreamNonInteractive(
       };
 
       child.stdout?.on('data', (c: Buffer | string) =>
-        push(typeof c === 'string' ? c : c.toString())
+        push({ type: 'agent', payload: typeof c === 'string' ? c : c.toString() })
       );
       child.stderr?.on('data', (c: Buffer | string) =>
-        push('[stderr] ' + (typeof c === 'string' ? c : c.toString()))
+        push({ type: 'log', payload: '[stderr] ' + (typeof c === 'string' ? c : c.toString()) })
       );
       const onEnd = (): void => {
         ended += 1;
@@ -343,8 +349,8 @@ function runCursorStreamNonInteractive(
       while (queue.length > 0 || ended < 2) {
         await waitNext();
         while (queue.length > 0) {
-          const chunk = queue.shift();
-          if (chunk) yield chunk;
+          const envelope = queue.shift();
+          if (envelope) yield envelope;
         }
       }
     },
@@ -356,7 +362,7 @@ function runCursorStream(
   context: AgentContext,
   options: CursorAgentOptions,
   acpSessionByAgent: Map<AgentId, AcpSession>
-): AsyncIterable<string> {
+): AsyncIterable<StreamEnvelope> {
   if (options.nonInteractive) {
     return runCursorStreamNonInteractive(prompt, context, options);
   }
@@ -369,13 +375,13 @@ export function createCursorAgent(options: CursorAgentOptions = {}): AgentPlugin
   return {
     async run(prompt: string, context: AgentContext): Promise<string> {
       const parts: string[] = [];
-      for await (const chunk of this.stream(prompt, context)) {
-        parts.push(chunk);
+      for await (const envelope of this.stream(prompt, context)) {
+        parts.push(envelope.payload);
       }
       return parts.join('');
     },
 
-    stream(prompt: string, context: AgentContext): AsyncIterable<string> {
+    stream(prompt: string, context: AgentContext): AsyncIterable<StreamEnvelope> {
       return runCursorStream(prompt, context, options, acpSessionByAgent);
     },
 
@@ -385,7 +391,7 @@ export function createCursorAgent(options: CursorAgentOptions = {}): AgentPlugin
         console.error('[clove] send-input: no ACP session for', agentId, '(known:', [...acpSessionByAgent.keys()], ')');
         return '\n[No active session for this agent; it may have exited. Start a new agent.]\n';
       }
-      session.pushFeedback?.('\n--- You: ' + input + '\n\n');
+      session.pushUserMessage?.(input);
       try {
         await session.sendPrompt(input);
       } catch (err) {

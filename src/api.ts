@@ -57,13 +57,10 @@ export class CloveApi {
 
   /**
    * Stream agent output as envelope format (type + payload).
-   * Currently all chunks are { type: 'agent', payload }; 'log' reserved for runtime stdout/stderr.
+   * Types: 'log' (runtime/stderr), 'reasoning' (agent thinking), 'agent' (final answer).
    */
   async *stream(agentId: AgentId): AsyncIterable<StreamEnvelope> {
-    const raw = this.orchestrator.streamLogs(agentId);
-    for await (const chunk of raw) {
-      yield { type: 'agent', payload: chunk };
-    }
+    yield* this.orchestrator.streamLogs(agentId);
   }
 
   async sendInput(agentId: AgentId, input: string): Promise<void> {

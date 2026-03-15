@@ -1,4 +1,7 @@
-import { stopAgent, type AgentRecord } from './api';
+import { useState } from 'react';
+import { stopAgent, vscodeUrlForPath, type AgentRecord } from './api';
+import { IconStop, IconVscode } from './Icons';
+import { ConfirmModal } from './ConfirmModal';
 
 interface Props {
   agents: AgentRecord[];
@@ -7,22 +10,23 @@ interface Props {
   onStop: () => void;
 }
 
-/** Build vscode:// URL to open a folder in a new window (VS Code and Cursor). */
-function vscodeUrlForPath(workspacePath: string): string {
-  const path = workspacePath.replace(/\\/g, '/');
-  const encoded = encodeURI(path);
-  const base = `vscode://file${path.startsWith('/') ? '' : '/'}${encoded}`;
-  return `${base}${path.endsWith('/') ? '' : '/'}?windowId=_blank`;
-}
-
 export function AgentList({ agents, selectedId, onSelect, onStop }: Props) {
-  async function handleStop(e: React.MouseEvent, agentId: string) {
+  const [stopConfirmAgentId, setStopConfirmAgentId] = useState<string | null>(null);
+
+  function handleStopClick(e: React.MouseEvent, agentId: string) {
     e.stopPropagation();
+    setStopConfirmAgentId(agentId);
+  }
+
+  async function handleStopConfirm() {
+    if (!stopConfirmAgentId) return;
     try {
-      await stopAgent(agentId);
+      await stopAgent(stopConfirmAgentId);
       onStop();
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setStopConfirmAgentId(null);
     }
   }
 
@@ -68,23 +72,34 @@ export function AgentList({ agents, selectedId, onSelect, onStop }: Props) {
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                style={actionLinkStyle}
+                style={cardIconLinkStyle}
                 title="Open workspace in VS Code"
               >
-                VS Code
+                <IconVscode />
               </a>
               <button
                 type="button"
-                onClick={(e) => handleStop(e, a.agentId)}
-                style={actionBtnStyle}
+                onClick={(e) => handleStopClick(e, a.agentId)}
+                style={cardIconBtnStyle}
                 title="Stop agent"
               >
-                Stop
+                <IconStop />
               </button>
             </div>
           </article>
         ))}
       </div>
+
+      <ConfirmModal
+        isOpen={stopConfirmAgentId != null}
+        onClose={() => setStopConfirmAgentId(null)}
+        onConfirm={handleStopConfirm}
+        title="Stop agent?"
+        message="The agent's workspace folder will be removed and its branch deleted. Any uncommitted changes will be lost."
+        confirmLabel="Stop agent"
+        cancelLabel="Cancel"
+        variant="danger"
+      />
     </section>
   );
 }
@@ -186,23 +201,21 @@ const cardActionsStyle: React.CSSProperties = {
   borderTop: '1px solid #334155',
 };
 
-const actionLinkStyle: React.CSSProperties = {
-  padding: '0.25rem 0.5rem',
-  fontSize: '0.75rem',
+const cardIconBtnStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '1.75rem',
+  height: '1.75rem',
+  padding: 0,
   borderRadius: '0.25rem',
   border: '1px solid #334155',
   background: 'transparent',
   color: '#94a3b8',
-  textDecoration: 'none',
   cursor: 'pointer',
 };
 
-const actionBtnStyle: React.CSSProperties = {
-  padding: '0.25rem 0.5rem',
-  fontSize: '0.75rem',
-  borderRadius: '0.25rem',
-  border: '1px solid #334155',
-  background: 'transparent',
-  color: '#94a3b8',
-  cursor: 'pointer',
+const cardIconLinkStyle: React.CSSProperties = {
+  ...cardIconBtnStyle,
+  textDecoration: 'none',
 };

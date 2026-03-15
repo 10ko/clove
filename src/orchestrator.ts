@@ -8,6 +8,7 @@ import type {
   AgentState,
   AgentStatus,
   SourceRepo,
+  StreamEnvelope,
 } from './types.js';
 import type { WorkspaceManager } from './workspaceManager.js';
 
@@ -15,6 +16,8 @@ export interface AgentRecord {
   agentId: AgentId;
   status: AgentStatus;
   workspacePath: string;
+  /** Git branch for this agent's workspace. */
+  branch?: string;
   runtimeKey: string;
   pluginKey: string;
   /** Agent phase: busy (prompt in flight) or waiting (ready for input). Only set when runtime supports it. */
@@ -76,6 +79,7 @@ export class Orchestrator {
       agentId,
       status: 'running',
       workspacePath,
+      branch,
       runtimeKey,
       pluginKey,
     });
@@ -124,7 +128,7 @@ export class Orchestrator {
   /**
    * Stream logs/agent output for an agent. Returns async iterable; empty if agent unknown.
    */
-  streamLogs(agentId: AgentId): AsyncIterable<string> {
+  streamLogs(agentId: AgentId): AsyncIterable<StreamEnvelope> {
     const record = this.agents.get(agentId);
     if (!record) {
       return (async function* () {})();

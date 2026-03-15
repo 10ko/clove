@@ -99,6 +99,10 @@ export default function App() {
             agentId={selectedId}
             agent={agents.find((a) => a.agentId === selectedId) ?? null}
             onClose={() => setSelectedId(null)}
+            onStop={() => {
+              setSelectedId(null);
+              refresh();
+            }}
           />
         )}
       </main>

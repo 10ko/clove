@@ -16,10 +16,12 @@ export type AgentStatus =
   | 'failed'
   | 'completed';
 
-/** Envelope for multiplexed streams: logs from runtime vs output from agent. */
+/** Envelope for multiplexed streams: logs, reasoning, agent answer, and user message. */
 export type StreamEnvelope =
   | { type: 'log'; payload: string }
-  | { type: 'agent'; payload: string };
+  | { type: 'reasoning'; payload: string }
+  | { type: 'agent'; payload: string }
+  | { type: 'user'; payload: string };
 
 /** Agent phase: busy (prompt in flight) vs waiting (ready for input). Can be implemented by any agent (e.g. ACP). */
 export type AgentState = 'busy' | 'waiting';
@@ -44,7 +46,7 @@ export interface AgentContext {
  */
 export interface AgentPlugin {
   run(prompt: string, context: AgentContext): Promise<string>;
-  stream(prompt: string, context: AgentContext): AsyncIterable<string>;
+  stream(prompt: string, context: AgentContext): AsyncIterable<StreamEnvelope>;
   /** Handle user input. agentId is provided so plugins can route to the right process. Return a string to append to the stream. */
   handleInput(agentId: AgentId, input: string): Promise<void | string>;
 }
@@ -61,7 +63,7 @@ export interface AgentRuntime {
     prompt: string
   ): Promise<void>;
   stop(agentId: AgentId): Promise<void>;
-  streamLogs(agentId: AgentId): AsyncIterable<string>;
+  streamLogs(agentId: AgentId): AsyncIterable<StreamEnvelope>;
   sendInput(agentId: AgentId, input: string): Promise<void>;
   /** Optional: agent state (e.g. busy vs waiting). Used by CLI/API for display. */
   getAgentState?(agentId: AgentId): { agentState?: AgentState } | undefined;

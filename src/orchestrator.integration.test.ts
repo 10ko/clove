@@ -61,8 +61,8 @@ describe('Orchestrator (integration)', () => {
       const chunks: string[] = [];
       const iterator = orchestrator.streamLogs(agentId);
       const timeout = Date.now() + 15000;
-      for await (const chunk of iterator) {
-        chunks.push(chunk);
+      for await (const envelope of iterator) {
+        chunks.push(envelope.payload);
         if (chunks.join('').length > 50 || Date.now() > timeout) break;
       }
       const output = chunks.join('');

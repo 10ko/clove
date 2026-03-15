@@ -9,16 +9,17 @@ import type {
   AgentRuntime,
   AgentState,
   AgentStateRef,
+  StreamEnvelope,
 } from '../../types.js';
 
 /** Append-only replay buffer plus live waiters so multiple streamLogs() calls get replay + tail. */
 class StreamQueue {
-  private readonly replay: string[] = [];
+  private readonly replay: StreamEnvelope[] = [];
   private readonly waiters: Array<() => void> = [];
   private done = false;
 
-  push(chunk: string): void {
-    this.replay.push(chunk);
+  push(envelope: StreamEnvelope): void {
+    this.replay.push(envelope);
     for (const w of this.waiters) w();
     this.waiters.length = 0;
   }
@@ -36,7 +37,7 @@ class StreamQueue {
     });
   }
 
-  async *drain(): AsyncIterable<string> {
+  async *drain(): AsyncIterable<StreamEnvelope> {
     let i = 0;
     while (true) {
       if (i < this.replay.length) {
@@ -94,7 +95,7 @@ export function createLocalRuntime(): AgentRuntime {
       }
     },
 
-    async *streamLogs(agentId: AgentId): AsyncIterable<string> {
+    async *streamLogs(agentId: AgentId): AsyncIterable<StreamEnvelope> {
       const entry = entries.get(agentId);
       if (!entry) {
         return;
@@ -109,7 +110,7 @@ export function createLocalRuntime(): AgentRuntime {
       }
       const out = await entry.agent.handleInput(agentId, input);
       if (typeof out === 'string' && out) {
-        entry.queue.push(out);
+        entry.queue.push({ type: 'agent', payload: out });
       }
     },
 

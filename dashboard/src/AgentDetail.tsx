@@ -1,23 +1,50 @@
 import { useState, useEffect, useRef } from 'react';
-import { sendInput, streamAgentUrl } from './api';
+import { sendInput, stopAgent, streamAgentUrl, vscodeUrlForPath } from './api';
 import type { AgentRecord, StreamEnvelope } from './api';
+import { IconBranch, IconCheck, IconClose, IconCopy, IconVscode } from './Icons';
+import { ConfirmModal } from './ConfirmModal';
 
 interface Props {
   agentId: string;
   agent: AgentRecord | null;
   onClose: () => void;
+  onStop?: () => void;
 }
 
-export function AgentDetail({ agentId, agent, onClose }: Props) {
-  const [output, setOutput] = useState<string>('');
+type StreamSegment = { type: StreamEnvelope['type']; payload: string };
+
+export function AgentDetail({ agentId, agent, onClose, onStop }: Props) {
+  const workspacePath = agent?.workspacePath ?? '';
+  const [segments, setSegments] = useState<StreamSegment[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [sending, setSending] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [showStopConfirm, setShowStopConfirm] = useState(false);
+  const [pathJustCopied, setPathJustCopied] = useState(false);
   const outputEndRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const TEXTAREA_MIN_HEIGHT = 40;
+  const TEXTAREA_MAX_HEIGHT = 280;
+
+  function adjustTextareaHeight() {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const h = Math.min(TEXTAREA_MAX_HEIGHT, Math.max(TEXTAREA_MIN_HEIGHT, el.scrollHeight));
+    el.style.height = `${h}px`;
+    el.style.overflow = h >= TEXTAREA_MAX_HEIGHT ? 'auto' : 'hidden';
+  }
 
   useEffect(() => {
-    setOutput('');
+    adjustTextareaHeight();
+  }, [inputValue]);
+
+  useEffect(() => {
+    setSegments([]);
     setStreamError(null);
     const url = streamAgentUrl(agentId);
     const es = new EventSource(url);
@@ -26,9 +53,9 @@ export function AgentDetail({ agentId, agent, onClose }: Props) {
     es.onmessage = (event) => {
       try {
         const envelope = JSON.parse(event.data) as StreamEnvelope;
-        setOutput((prev) => prev + envelope.payload);
+        setSegments((prev) => [...prev, { type: envelope.type, payload: envelope.payload }]);
       } catch {
-        setOutput((prev) => prev + event.data + '\n');
+        setSegments((prev) => [...prev, { type: 'log', payload: event.data + '\n' }]);
       }
     };
 
@@ -45,7 +72,13 @@ export function AgentDetail({ agentId, agent, onClose }: Props) {
 
   useEffect(() => {
     outputEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [output]);
+  }, [segments]);
+
+  useEffect(() => {
+    return () => {
+      if (copyFeedbackTimeoutRef.current) clearTimeout(copyFeedbackTimeoutRef.current);
+    };
+  }, []);
 
   async function handleSendInput(e: React.FormEvent) {
     e.preventDefault();
@@ -62,34 +95,108 @@ export function AgentDetail({ agentId, agent, onClose }: Props) {
     }
   }
 
+  function handleStopClick() {
+    setShowStopConfirm(true);
+  }
+
+  async function handleStopConfirm() {
+    try {
+      await stopAgent(agentId);
+      onStop?.();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  function handleCopyPath() {
+    if (!workspacePath) return;
+    navigator.clipboard.writeText(workspacePath).then(
+      () => {
+        if (copyFeedbackTimeoutRef.current) clearTimeout(copyFeedbackTimeoutRef.current);
+        setPathJustCopied(true);
+        copyFeedbackTimeoutRef.current = setTimeout(() => {
+          setPathJustCopied(false);
+          copyFeedbackTimeoutRef.current = null;
+        }, 2000);
+      },
+      () => alert('Failed to copy'),
+    );
+  }
+
   return (
     <div style={overlayStyle} onClick={onClose}>
       <div style={panelStyle} onClick={(e) => e.stopPropagation()}>
         <div style={headerStyle}>
           <div style={headerTitleBlockStyle}>
-            <h2 style={titleStyle}>{agentId}</h2>
-            {(agent != null) && (
-              <div style={statusRowStyle}>
-                <span style={statusLabelStyle}>Status</span>
-                <span style={statusBadgeStyle(agent.status)}>{agent.status}</span>
-                {agent.agentState != null && (
-                  <>
-                    <span style={statusLabelStyle}>Phase</span>
-                    <span style={agentStateBadgeStyle(agent.agentState)}>{agent.agentState}</span>
-                  </>
+            <div style={nameRowStyle}>
+              <h2 style={titleStyle}>{agentId}</h2>
+              {agent?.agentState != null && (
+                <span style={agentStateBadgeStyle(agent.agentState)}>{agent.agentState}</span>
+              )}
+              {agent != null && (
+                <>
+                  <span style={headerTagStyle}>{agent.runtimeKey}</span>
+                  <span style={headerTagStyle}>{agent.pluginKey}</span>
+                </>
+              )}
+            </div>
+            {agent != null && (
+              <div style={headerMetaStyle}>
+                <div style={headerPathRowStyle}>
+                  <div style={headerPathStyle} title={agent.workspacePath}>
+                    {agent.workspacePath}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyPath}
+                    style={pathJustCopied ? { ...headerCopyBtnStyle, ...copiedBtnStyle } : headerCopyBtnStyle}
+                    title={pathJustCopied ? 'Copied!' : 'Copy path'}
+                  >
+                    {pathJustCopied ? <IconCheck size={14} /> : <IconCopy size={14} />}
+                  </button>
+                </div>
+                {agent.branch != null && agent.branch !== '' && (
+                  <div style={headerBranchRowStyle}>
+                    <IconBranch size={12} />
+                    <span style={headerBranchStyle}>{agent.branch}</span>
+                  </div>
                 )}
               </div>
             )}
           </div>
-          <button type="button" onClick={onClose} style={closeBtnStyle}>
-            Close
+          <button type="button" onClick={onClose} style={closeBtnStyle} title="Close">
+            <IconClose />
+          </button>
+        </div>
+
+        <div style={actionsBarStyle}>
+          <div style={actionsLeftStyle}>
+            {workspacePath && (
+              <a
+                href={vscodeUrlForPath(workspacePath)}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={actionLinkWithTextStyle}
+                title="Open workspace in VS Code"
+              >
+                Open <IconVscode size={14} />
+              </a>
+            )}
+          </div>
+          <button type="button" onClick={handleStopClick} style={stopBtnStyle} title="Stop agent">
+            Stop agent
           </button>
         </div>
 
         <div style={streamSectionStyle}>
           <div style={streamLabelStyle}>Stream</div>
           <pre style={preStyle}>
-            {output || '(waiting for output…)'}
+            {segments.length === 0 && '(waiting for output…)'}
+            {segments.map((seg, i) => (
+              <span key={i} style={segmentStyle(seg.type)} title={seg.type === 'reasoning' ? 'Reasoning' : seg.type === 'log' ? 'Log' : undefined}>
+                {seg.payload}
+              </span>
+            ))}
             <div ref={outputEndRef} />
           </pre>
           {streamError && (
@@ -97,23 +204,39 @@ export function AgentDetail({ agentId, agent, onClose }: Props) {
           )}
         </div>
 
-        <form onSubmit={handleSendInput} style={formStyle}>
-          <label style={labelStyle}>
-            Send input
-            <div style={inputRowStyle}>
-              <input
-                type="text"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                placeholder="Type to send to agent…"
-                disabled={sending}
-              />
-              <button type="submit" disabled={sending || !inputValue.trim()}>
-                {sending ? 'Sending…' : 'Send'}
-              </button>
-            </div>
-          </label>
+        <form onSubmit={handleSendInput} style={formStyle} ref={(el) => { formRef.current = el; }}>
+          <div style={inputRowStyle}>
+            <textarea
+              ref={textareaRef}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  if (inputValue.trim()) formRef.current?.requestSubmit();
+                }
+              }}
+              placeholder="Type to send to agent… (Enter to send, Shift+Enter for new line)"
+              disabled={sending}
+              rows={1}
+              style={textareaStyle}
+            />
+            <button type="submit" disabled={sending || !inputValue.trim()}>
+              {sending ? 'Sending…' : 'Send'}
+            </button>
+          </div>
         </form>
+
+        <ConfirmModal
+          isOpen={showStopConfirm}
+          onClose={() => setShowStopConfirm(false)}
+          onConfirm={handleStopConfirm}
+          title="Stop agent?"
+          message="The agent's workspace folder will be removed and its branch deleted. Any uncommitted changes will be lost."
+          confirmLabel="Stop agent"
+          cancelLabel="Cancel"
+          variant="danger"
+        />
       </div>
     </div>
   );
@@ -132,7 +255,7 @@ const overlayStyle: React.CSSProperties = {
 
 const panelStyle: React.CSSProperties = {
   width: '100%',
-  maxWidth: '42rem',
+  maxWidth: '56rem',
   maxHeight: '90vh',
   display: 'flex',
   flexDirection: 'column',
@@ -144,7 +267,7 @@ const panelStyle: React.CSSProperties = {
 
 const headerStyle: React.CSSProperties = {
   display: 'flex',
-  alignItems: 'center',
+  alignItems: 'flex-start',
   justifyContent: 'space-between',
   padding: '1rem 1.25rem',
   borderBottom: '1px solid #334155',
@@ -152,41 +275,81 @@ const headerStyle: React.CSSProperties = {
 
 const titleStyle: React.CSSProperties = {
   margin: 0,
-  fontSize: '1rem',
+  fontSize: '1.25rem',
   fontWeight: 600,
 };
 
 const headerTitleBlockStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: '0.5rem',
+  gap: '0.35rem',
   minWidth: 0,
 };
 
-const statusRowStyle: React.CSSProperties = {
+const nameRowStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '0.5rem',
   flexWrap: 'wrap',
 };
 
-const statusLabelStyle: React.CSSProperties = {
-  fontSize: '0.7rem',
-  color: '#64748b',
-  textTransform: 'uppercase',
-  letterSpacing: '0.05em',
+const headerMetaStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.15rem',
 };
 
-function statusBadgeStyle(status: string): React.CSSProperties {
-  const isRunning = status === 'running';
-  return {
-    fontSize: '0.75rem',
-    padding: '0.15rem 0.5rem',
-    borderRadius: '0.25rem',
-    background: isRunning ? 'rgba(34, 197, 94, 0.2)' : 'rgba(148, 163, 184, 0.2)',
-    color: isRunning ? '#22c55e' : '#94a3b8',
-  };
-}
+const headerPathRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.35rem',
+  minWidth: 0,
+};
+
+const headerPathStyle: React.CSSProperties = {
+  flex: 1,
+  fontSize: '0.8125rem',
+  color: '#94a3b8',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+};
+
+const headerCopyBtnStyle: React.CSSProperties = {
+  flexShrink: 0,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '1.5rem',
+  height: '1.5rem',
+  padding: 0,
+  border: 'none',
+  borderRadius: '0.25rem',
+  background: 'transparent',
+  color: '#94a3b8',
+  cursor: 'pointer',
+};
+
+const headerBranchStyle: React.CSSProperties = {
+  fontSize: '0.75rem',
+  color: '#64748b',
+};
+
+const headerBranchRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.35rem',
+  color: '#64748b',
+};
+
+const headerTagStyle: React.CSSProperties = {
+  fontSize: '0.75rem',
+  padding: '0.2rem 0.5rem',
+  borderRadius: '0.25rem',
+  background: 'rgba(100, 116, 139, 0.25)',
+  color: '#94a3b8',
+  textTransform: 'capitalize',
+};
 
 function agentStateBadgeStyle(agentState: 'busy' | 'waiting'): React.CSSProperties {
   return {
@@ -200,6 +363,81 @@ function agentStateBadgeStyle(agentState: 'busy' | 'waiting'): React.CSSProperti
 
 const closeBtnStyle: React.CSSProperties = {
   flexShrink: 0,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '2rem',
+  height: '2rem',
+  padding: 0,
+  border: 'none',
+  borderRadius: '0.25rem',
+  background: 'transparent',
+  color: '#94a3b8',
+  cursor: 'pointer',
+};
+
+const actionsBarStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '0.5rem',
+  padding: '0.75rem 1.25rem',
+  borderBottom: '1px solid #334155',
+  flexWrap: 'wrap',
+};
+
+const actionsLeftStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.5rem',
+};
+
+const stopBtnStyle: React.CSSProperties = {
+  padding: '0.25rem 0.5rem',
+  fontSize: '0.8125rem',
+  borderRadius: '0.25rem',
+  border: '1px solid #334155',
+  background: 'transparent',
+  color: '#94a3b8',
+  cursor: 'pointer',
+};
+
+const iconBtnStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '2rem',
+  height: '2rem',
+  padding: 0,
+  borderRadius: '0.25rem',
+  border: '1px solid #334155',
+  background: 'transparent',
+  color: '#94a3b8',
+  cursor: 'pointer',
+};
+
+const actionLinkStyle: React.CSSProperties = {
+  ...iconBtnStyle,
+  textDecoration: 'none',
+};
+
+const actionLinkWithTextStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.35rem',
+  padding: '0.25rem 0.5rem',
+  fontSize: '0.8125rem',
+  borderRadius: '0.25rem',
+  border: '1px solid #334155',
+  background: 'transparent',
+  color: '#94a3b8',
+  textDecoration: 'none',
+  cursor: 'pointer',
+};
+
+const copiedBtnStyle: React.CSSProperties = {
+  color: '#22c55e',
+  borderColor: 'rgba(34, 197, 94, 0.5)',
 };
 
 const streamSectionStyle: React.CSSProperties = {
@@ -216,6 +454,26 @@ const streamLabelStyle: React.CSSProperties = {
   marginBottom: '0.25rem',
 };
 
+function segmentStyle(type: StreamSegment['type']): React.CSSProperties {
+  if (type === 'reasoning') {
+    return { color: '#94a3b8', opacity: 0.85 };
+  }
+  if (type === 'log') {
+    return { color: '#64748b', fontSize: '0.75em' };
+  }
+  if (type === 'user') {
+    return {
+      display: 'block',
+      marginTop: '0.5rem',
+      marginBottom: '0.25rem',
+      padding: '0.2rem 0.4rem',
+      borderRadius: '0.25rem',
+      background: 'rgba(100, 116, 139, 0.2)',
+    };
+  }
+  return {};
+}
+
 const preStyle: React.CSSProperties = {
   flex: 1,
   margin: 0,
@@ -227,7 +485,8 @@ const preStyle: React.CSSProperties = {
   lineHeight: 1.5,
   whiteSpace: 'pre-wrap',
   wordBreak: 'break-word',
-  maxHeight: '20rem',
+  minHeight: '16rem',
+  maxHeight: '36rem',
 };
 
 const streamErrorStyle: React.CSSProperties = {
@@ -237,18 +496,26 @@ const streamErrorStyle: React.CSSProperties = {
 };
 
 const formStyle: React.CSSProperties = {
-  padding: '1rem 1.25rem',
-  borderTop: '1px solid #334155',
-};
-
-const labelStyle: React.CSSProperties = {
-  display: 'block',
-  fontSize: '0.875rem',
-  color: '#94a3b8',
-  marginBottom: '0.25rem',
+  padding: '0.5rem 1.25rem 1rem',
 };
 
 const inputRowStyle: React.CSSProperties = {
   display: 'flex',
   gap: '0.5rem',
+  alignItems: 'flex-end',
+};
+
+const textareaStyle: React.CSSProperties = {
+  flex: 1,
+  resize: 'none',
+  minHeight: '2.5rem',
+  padding: '0.5rem 0.6rem',
+  fontSize: '0.875rem',
+  fontFamily: 'inherit',
+  color: '#e2e8f0',
+  background: '#0f172a',
+  border: '1px solid #334155',
+  borderRadius: '0.375rem',
+  outline: 'none',
+  boxSizing: 'border-box',
 };

@@ -4,6 +4,7 @@ export interface AgentRecord {
   agentId: string;
   status: string;
   workspacePath: string;
+  branch?: string;
   runtimeKey: string;
   pluginKey: string;
   /** Agent phase: "busy" (prompt in flight) or "waiting" (ready for input). Set when runtime supports it. */
@@ -34,7 +35,11 @@ export interface StartAgentResponse {
   repoPath: string;
 }
 
-export type StreamEnvelope = { type: 'log'; payload: string } | { type: 'agent'; payload: string };
+export type StreamEnvelope =
+  | { type: 'log'; payload: string }
+  | { type: 'reasoning'; payload: string }
+  | { type: 'agent'; payload: string }
+  | { type: 'user'; payload: string };
 
 export interface ServerInfo {
   cwd: string;
@@ -84,4 +89,12 @@ export async function sendInput(agentId: string, input: string): Promise<void> {
 
 export function streamAgentUrl(agentId: string): string {
   return `${API_BASE}/agents/${encodeURIComponent(agentId)}/stream`;
+}
+
+/** Build vscode:// URL to open a folder in a new window (VS Code and Cursor). */
+export function vscodeUrlForPath(workspacePath: string): string {
+  const path = workspacePath.replace(/\\/g, '/');
+  const encoded = encodeURI(path);
+  const base = `vscode://file${path.startsWith('/') ? '' : '/'}${encoded}`;
+  return `${base}${path.endsWith('/') ? '' : '/'}?windowId=_blank`;
 }
