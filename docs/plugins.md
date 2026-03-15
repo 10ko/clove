@@ -22,6 +22,13 @@ interface AgentRuntime {
 
 **Example:** See `src/plugins/runtime/local.ts` (in-process) and `src/plugins/runtime/docker.ts` (container with workspace mounted).
 
+### Docker runtime and git auth
+
+The Docker runtime uses the **remote** workspace path: the workspace manager runs `git clone <url>` **on the host** (not inside the container), then the clone is mounted into the container. So authentication is whatever your host’s `git` uses:
+
+- **Public repos:** no auth.
+- **Private repos:** use a URL with a token (e.g. `https://<token>@github.com/org/repo`) or ensure the host has git credentials configured (e.g. `credential.helper`, SSH keys) so that a plain `git clone <url>` in the same environment would succeed.
+
 **Register:** In `src/cli.ts` and `src/server.ts`, add your runtime to the `runtimes` object passed to `Orchestrator`, e.g. `myRuntime: createMyRuntime()`.
 
 ---

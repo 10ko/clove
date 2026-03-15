@@ -244,11 +244,20 @@ function runCursorStreamAcp(
           throw new Error('ACP session/new did not return sessionId');
         }
 
-        const sendPrompt = async (text: string): Promise<void> => {
+        const stateRef = context.agentStateRef;
+        const sendPromptRaw = async (text: string): Promise<void> => {
           await send('session/prompt', {
             sessionId,
             prompt: [{ type: 'text', text }],
           });
+        };
+        const sendPrompt = async (text: string): Promise<void> => {
+          if (stateRef) stateRef.current = 'busy';
+          try {
+            await sendPromptRaw(text);
+          } finally {
+            if (stateRef) stateRef.current = 'waiting';
+          }
         };
 
         acpSessionByAgent.set(agentId, {
@@ -256,6 +265,7 @@ function runCursorStreamAcp(
           sendPrompt,
           pushFeedback: (line) => push(line),
         });
+        if (stateRef) stateRef.current = 'busy';
         sendPrompt(prompt).catch(() => {});
       } catch (err) {
         cleanup();
@@ -375,7 +385,7 @@ export function createCursorAgent(options: CursorAgentOptions = {}): AgentPlugin
         console.error('[clove] send-input: no ACP session for', agentId, '(known:', [...acpSessionByAgent.keys()], ')');
         return '\n[No active session for this agent; it may have exited. Start a new agent.]\n';
       }
-      session.pushFeedback?.('\n[Follow-up sent.]\n');
+      session.pushFeedback?.('\n--- You: ' + input + '\n\n');
       try {
         await session.sendPrompt(input);
       } catch (err) {

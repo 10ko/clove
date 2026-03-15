@@ -6,6 +6,8 @@ export interface AgentRecord {
   workspacePath: string;
   runtimeKey: string;
   pluginKey: string;
+  /** Agent phase: "busy" (prompt in flight) or "waiting" (ready for input). Set when runtime supports it. */
+  agentState?: 'busy' | 'waiting';
 }
 
 export interface ListAgentsResponse {

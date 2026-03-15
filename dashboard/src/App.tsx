@@ -63,6 +63,7 @@ export default function App() {
         {selectedId && (
           <AgentDetail
             agentId={selectedId}
+            agent={agents.find((a) => a.agentId === selectedId) ?? null}
             onClose={() => setSelectedId(null)}
           />
         )}

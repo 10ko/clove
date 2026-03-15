@@ -271,7 +271,8 @@ async function runCommand(
       return false;
     }
     for (const a of agents) {
-      console.log(`${a.agentId}  ${a.status}  ${a.workspacePath}`);
+      const state = a.agentState ? ` (${a.agentState})` : '';
+      console.log(`${a.agentId}  ${a.status}${state}  ${a.workspacePath}`);
     }
     return false;
   }

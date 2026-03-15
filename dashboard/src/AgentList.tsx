@@ -7,6 +7,14 @@ interface Props {
   onStop: () => void;
 }
 
+/** Build vscode:// URL to open a folder in a new window (VS Code and Cursor). */
+function vscodeUrlForPath(workspacePath: string): string {
+  const path = workspacePath.replace(/\\/g, '/');
+  const encoded = encodeURI(path);
+  const base = `vscode://file${path.startsWith('/') ? '' : '/'}${encoded}`;
+  return `${base}${path.endsWith('/') ? '' : '/'}?windowId=_blank`;
+}
+
 export function AgentList({ agents, selectedId, onSelect, onStop }: Props) {
   async function handleStop(e: React.MouseEvent, agentId: string) {
     e.stopPropagation();
@@ -41,12 +49,25 @@ export function AgentList({ agents, selectedId, onSelect, onStop }: Props) {
           >
             <div style={itemMainStyle}>
               <span style={idStyle}>{a.agentId}</span>
-              <span style={statusStyle}>{a.status}</span>
+              <span style={statusBadgeStyle(a.status)}>{a.status}</span>
+              {a.agentState && (
+                <span style={agentStateStyle(a.agentState)}>{a.agentState}</span>
+              )}
               <span style={metaStyle}>{a.runtimeKey} / {a.pluginKey}</span>
             </div>
             <div style={pathStyle} title={a.workspacePath}>
               {a.workspacePath}
             </div>
+            <a
+              href={vscodeUrlForPath(a.workspacePath)}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              style={openVscodeBtnStyle}
+              title="Open workspace in VS Code"
+            >
+              VS Code
+            </a>
             <button
               type="button"
               onClick={(e) => handleStop(e, a.agentId)}
@@ -103,13 +124,26 @@ const idStyle: React.CSSProperties = {
   flexShrink: 0,
 };
 
-const statusStyle: React.CSSProperties = {
-  fontSize: '0.75rem',
-  padding: '0.125rem 0.375rem',
-  borderRadius: '0.25rem',
-  background: '#334155',
-  color: '#94a3b8',
-};
+function statusBadgeStyle(status: string): React.CSSProperties {
+  const isRunning = status === 'running';
+  return {
+    fontSize: '0.75rem',
+    padding: '0.125rem 0.375rem',
+    borderRadius: '0.25rem',
+    background: isRunning ? 'rgba(34, 197, 94, 0.2)' : '#334155',
+    color: isRunning ? '#22c55e' : '#94a3b8',
+  };
+}
+
+function agentStateStyle(agentState: 'busy' | 'waiting'): React.CSSProperties {
+  return {
+    fontSize: '0.7rem',
+    padding: '0.1rem 0.35rem',
+    borderRadius: '0.2rem',
+    background: agentState === 'busy' ? 'rgba(251, 191, 36, 0.2)' : 'rgba(34, 197, 94, 0.2)',
+    color: agentState === 'busy' ? '#fbbf24' : '#22c55e',
+  };
+}
 
 const metaStyle: React.CSSProperties = {
   fontSize: '0.75rem',
@@ -124,6 +158,18 @@ const pathStyle: React.CSSProperties = {
   whiteSpace: 'nowrap',
   fontSize: '0.875rem',
   color: '#64748b',
+};
+
+const openVscodeBtnStyle: React.CSSProperties = {
+  flexShrink: 0,
+  padding: '0.25rem 0.5rem',
+  fontSize: '0.75rem',
+  borderRadius: '0.375rem',
+  border: '1px solid #334155',
+  background: '#1e293b',
+  color: '#e2e8f0',
+  textDecoration: 'none',
+  cursor: 'pointer',
 };
 
 const stopBtnStyle: React.CSSProperties = {

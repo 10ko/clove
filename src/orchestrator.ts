@@ -2,7 +2,13 @@
  * Orchestrator core: track agents, manage workspaces, expose unified API for CLI and dashboard.
  */
 
-import type { AgentId, AgentRuntime, AgentStatus, SourceRepo } from './types.js';
+import type {
+  AgentId,
+  AgentRuntime,
+  AgentState,
+  AgentStatus,
+  SourceRepo,
+} from './types.js';
 import type { WorkspaceManager } from './workspaceManager.js';
 
 export interface AgentRecord {
@@ -11,6 +17,8 @@ export interface AgentRecord {
   workspacePath: string;
   runtimeKey: string;
   pluginKey: string;
+  /** Agent phase: busy (prompt in flight) or waiting (ready for input). Only set when runtime supports it. */
+  agentState?: AgentState;
 }
 
 export interface OrchestratorOptions {
@@ -93,8 +101,22 @@ export class Orchestrator {
     return this.agents.get(agentId)?.status;
   }
 
+  /** Get full record for an agent, including agentState if the runtime supports it. */
+  getAgentRecord(agentId: AgentId): AgentRecord | undefined {
+    const record = this.agents.get(agentId);
+    if (!record) return undefined;
+    return this.enrichWithAgentState(record);
+  }
+
   listAgents(): AgentRecord[] {
-    return Array.from(this.agents.values());
+    return Array.from(this.agents.values()).map((r) => this.enrichWithAgentState(r));
+  }
+
+  private enrichWithAgentState(record: AgentRecord): AgentRecord {
+    const runtime = this.runtimes[record.runtimeKey];
+    const state = runtime?.getAgentState?.(record.agentId);
+    if (state?.agentState == null) return record;
+    return { ...record, agentState: state.agentState };
   }
 
   /**

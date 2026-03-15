@@ -3,7 +3,13 @@
  * Supports replay: each streamLogs() call sees all output so far, then any new output.
  */
 
-import type { AgentId, AgentPlugin, AgentRuntime } from '../../types.js';
+import type {
+  AgentId,
+  AgentPlugin,
+  AgentRuntime,
+  AgentState,
+  AgentStateRef,
+} from '../../types.js';
 
 /** Append-only replay buffer plus live waiters so multiple streamLogs() calls get replay + tail. */
 class StreamQueue {
@@ -48,6 +54,7 @@ interface LocalAgentEntry {
   agent: AgentPlugin;
   queue: StreamQueue;
   taskPromise: Promise<void>;
+  agentStateRef?: AgentStateRef;
 }
 
 export function createLocalRuntime(): AgentRuntime {
@@ -64,7 +71,8 @@ export function createLocalRuntime(): AgentRuntime {
         throw new Error(`Agent already running: ${agentId}`);
       }
       const queue = new StreamQueue();
-      const context = { workspacePath, agentId };
+      const agentStateRef: AgentStateRef = { current: 'waiting' };
+      const context = { workspacePath, agentId, agentStateRef };
       const taskPromise = (async () => {
         try {
           for await (const chunk of agent.stream(prompt, context)) {
@@ -74,7 +82,7 @@ export function createLocalRuntime(): AgentRuntime {
           queue.close();
         }
       })();
-      entries.set(agentId, { agent, queue, taskPromise });
+      entries.set(agentId, { agent, queue, taskPromise, agentStateRef });
     },
 
     async stop(agentId: AgentId): Promise<void> {
@@ -103,6 +111,12 @@ export function createLocalRuntime(): AgentRuntime {
       if (typeof out === 'string' && out) {
         entry.queue.push(out);
       }
+    },
+
+    getAgentState(agentId: AgentId): { agentState?: AgentState } | undefined {
+      const entry = entries.get(agentId);
+      const state = entry?.agentStateRef?.current;
+      return state != null ? { agentState: state } : undefined;
     },
   };
 }

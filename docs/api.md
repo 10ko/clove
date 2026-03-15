@@ -37,11 +37,14 @@ GET /api/agents
       "status": "running",
       "workspacePath": "/path/to/worktree",
       "runtimeKey": "local",
-      "pluginKey": "echo"
+      "pluginKey": "echo",
+      "agentState": "waiting"
     }
   ]
 }
 ```
+
+- **agentState** (optional): `"busy"` when a prompt turn is in flight, `"waiting"` when the agent is ready for input. Only present when the runtime supports it (e.g. local runtime; Cursor plugin sets it via ACP). Other agents can implement the same pattern using `context.agentStateRef`.
 
 ### Start agent
 

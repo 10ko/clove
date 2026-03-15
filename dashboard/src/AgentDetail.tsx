@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { sendInput, streamAgentUrl } from './api';
-import type { StreamEnvelope } from './api';
+import type { AgentRecord, StreamEnvelope } from './api';
 
 interface Props {
   agentId: string;
+  agent: AgentRecord | null;
   onClose: () => void;
 }
 
-export function AgentDetail({ agentId, onClose }: Props) {
+export function AgentDetail({ agentId, agent, onClose }: Props) {
   const [output, setOutput] = useState<string>('');
   const [inputValue, setInputValue] = useState('');
   const [sending, setSending] = useState(false);
@@ -65,7 +66,21 @@ export function AgentDetail({ agentId, onClose }: Props) {
     <div style={overlayStyle} onClick={onClose}>
       <div style={panelStyle} onClick={(e) => e.stopPropagation()}>
         <div style={headerStyle}>
-          <h2 style={titleStyle}>{agentId}</h2>
+          <div style={headerTitleBlockStyle}>
+            <h2 style={titleStyle}>{agentId}</h2>
+            {(agent != null) && (
+              <div style={statusRowStyle}>
+                <span style={statusLabelStyle}>Status</span>
+                <span style={statusBadgeStyle(agent.status)}>{agent.status}</span>
+                {agent.agentState != null && (
+                  <>
+                    <span style={statusLabelStyle}>Phase</span>
+                    <span style={agentStateBadgeStyle(agent.agentState)}>{agent.agentState}</span>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
           <button type="button" onClick={onClose} style={closeBtnStyle}>
             Close
           </button>
@@ -140,6 +155,48 @@ const titleStyle: React.CSSProperties = {
   fontSize: '1rem',
   fontWeight: 600,
 };
+
+const headerTitleBlockStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.5rem',
+  minWidth: 0,
+};
+
+const statusRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.5rem',
+  flexWrap: 'wrap',
+};
+
+const statusLabelStyle: React.CSSProperties = {
+  fontSize: '0.7rem',
+  color: '#64748b',
+  textTransform: 'uppercase',
+  letterSpacing: '0.05em',
+};
+
+function statusBadgeStyle(status: string): React.CSSProperties {
+  const isRunning = status === 'running';
+  return {
+    fontSize: '0.75rem',
+    padding: '0.15rem 0.5rem',
+    borderRadius: '0.25rem',
+    background: isRunning ? 'rgba(34, 197, 94, 0.2)' : 'rgba(148, 163, 184, 0.2)',
+    color: isRunning ? '#22c55e' : '#94a3b8',
+  };
+}
+
+function agentStateBadgeStyle(agentState: 'busy' | 'waiting'): React.CSSProperties {
+  return {
+    fontSize: '0.75rem',
+    padding: '0.15rem 0.5rem',
+    borderRadius: '0.25rem',
+    background: agentState === 'busy' ? 'rgba(251, 191, 36, 0.2)' : 'rgba(34, 197, 94, 0.2)',
+    color: agentState === 'busy' ? '#fbbf24' : '#22c55e',
+  };
+}
 
 const closeBtnStyle: React.CSSProperties = {
   flexShrink: 0,
