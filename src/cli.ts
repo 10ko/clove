@@ -109,8 +109,8 @@ function runDashboard(options?: {
 }): Promise<void> {
   const exitOnClose = options?.exitOnClose ?? false;
   const dashboardChildRef = options?.dashboardChildRef;
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const dashboardDir = path.join(__dirname, '..', 'dashboard');
+  const cliDir = path.dirname(fileURLToPath(import.meta.url));
+  const dashboardDir = path.join(cliDir, '..', 'dashboard');
   if (!fs.existsSync(dashboardDir)) {
     console.error('clove: dashboard not found at', dashboardDir);
     if (exitOnClose) process.exit(1);

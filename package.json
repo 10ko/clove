@@ -11,6 +11,7 @@
     "build": "tsc",
     "dev": "tsx src/cli.ts",
     "start": "node bin/clove.js",
+    "build:binary": "npm run build && npm run dashboard:build && pkg . --targets node18-macos-arm64 --output dist/clove-macos-arm64 --no-bytecode",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
     "format": "prettier --write \"src/**/*.ts\"",
@@ -20,6 +21,11 @@
     "dashboard:dev": "npm run dev --prefix dashboard",
     "dashboard:build": "npm run build --prefix dashboard",
     "dashboard:preview": "npm run preview --prefix dashboard"
+  },
+  "pkg": {
+    "scripts": ["bin/clove.js", "dist/**/*.js"],
+    "assets": ["dashboard/dist/**"],
+    "targets": ["node18-macos-arm64"]
   },
   "engines": {
     "node": ">=18"
@@ -32,6 +38,7 @@
   ],
   "license": "MIT",
   "devDependencies": {
+    "@yao-pkg/pkg": "^6.0.0",
     "@eslint/js": "^9.15.0",
     "@types/node": "^22.10.0",
     "eslint": "^9.15.0",

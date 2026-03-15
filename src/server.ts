@@ -13,8 +13,8 @@ import { createLocalRuntime } from './plugins/runtime/local.js';
 import { createDockerRuntime } from './plugins/runtime/docker.js';
 import { createCursorAgent } from './plugins/agent/cursor.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DASHBOARD_DIR = path.resolve(__dirname, '../../dashboard/dist');
+const serverDir = path.dirname(fileURLToPath(import.meta.url));
+const DASHBOARD_DIR = path.resolve(serverDir, '../../dashboard/dist');
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
