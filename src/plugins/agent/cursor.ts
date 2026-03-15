@@ -1,0 +1,388 @@
+/**
+ * Cursor agent plugin: runs the Cursor CLI via ACP (Agent Client Protocol) for
+ * session-based interaction and reliable follow-up input.
+ * See https://cursor.com/docs/cli/acp and https://agentclientprotocol.com/
+ */
+
+import { spawn, spawnSync } from 'node:child_process';
+import fs from 'node:fs/promises';
+import * as path from 'node:path';
+import type { AgentContext, AgentId, AgentPlugin } from '../../types.js';
+
+export interface CursorAgentOptions {
+  /** Command to run (default: 'agent'). Use full path if not in PATH. */
+  command?: string;
+  /** Extra args passed to the CLI before 'acp' (e.g. --trust, --model). */
+  extraArgs?: string[];
+  /** If true, use one-shot -p mode instead of ACP (no follow-up input). Default: false. */
+  nonInteractive?: boolean;
+}
+
+const CURSOR_INSTALL_HINT =
+  'Install with: curl https://cursor.com/install -fsS | bash (see https://cursor.com/docs/cli/overview)';
+
+/** ACP session handle for follow-up prompts. */
+interface AcpSession {
+  sessionId: string;
+  sendPrompt: (text: string) => Promise<void>;
+  /** Push a line into the stream (e.g. "[Follow-up sent.]") for user feedback. */
+  pushFeedback?: (line: string) => void;
+}
+
+function isCursorCliInstalled(command: string): boolean {
+  const r = spawnSync(command, ['--version'], {
+    stdio: 'pipe',
+    timeout: 5000,
+  });
+  return r.status === 0;
+}
+
+function resolveCommandToPath(cmd: string): string {
+  if (path.isAbsolute(cmd) || cmd.includes(path.sep)) return cmd;
+  try {
+    const which = process.platform === 'win32' ? 'where' : 'which';
+    const r = spawnSync(which, [cmd], { encoding: 'utf-8', timeout: 5000 });
+    const first = r.stdout?.split(/\r?\n/)[0]?.trim();
+    return first || cmd;
+  } catch {
+    return cmd;
+  }
+}
+
+/** Run Cursor in ACP mode: JSON-RPC over stdio, session/new + session/prompt, stream session/update. */
+function runCursorStreamAcp(
+  prompt: string,
+  context: AgentContext,
+  options: CursorAgentOptions,
+  acpSessionByAgent: Map<AgentId, AcpSession>
+): AsyncIterable<string> {
+  const command = options.command ?? 'agent';
+  const extraArgs = options.extraArgs ?? [];
+  const agentId = context.agentId;
+  const resolvedCommand = resolveCommandToPath(command);
+  const acpArgs = ['--trust', ...extraArgs, 'acp'];
+
+  return {
+    async *[Symbol.asyncIterator]() {
+      if (!isCursorCliInstalled(command)) {
+        throw new Error(
+          `Cursor CLI not found (command: ${command}). ${CURSOR_INSTALL_HINT}`
+        );
+      }
+
+      const child = spawn(resolvedCommand, acpArgs, {
+        cwd: context.workspacePath,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env },
+      });
+
+      const queue: string[] = [];
+      let ended = false;
+      let resolveWait: (() => void) | null = null;
+      const waitNext = (): Promise<void> =>
+        new Promise((resolve) => {
+          if (queue.length > 0 || ended) return void resolve();
+          resolveWait = resolve;
+        });
+      const push = (chunk: string): void => {
+        if (!chunk) return;
+        queue.push(chunk);
+        if (resolveWait) {
+          resolveWait();
+          resolveWait = null;
+        }
+      };
+
+      const cleanup = (exitCode?: number): void => {
+        acpSessionByAgent.delete(agentId);
+        push('\n[ACP process exited' + (exitCode != null ? ` with code ${exitCode}` : '') + '.]\n');
+        ended = true;
+        if (resolveWait) {
+          resolveWait();
+          resolveWait = null;
+        }
+      };
+      child.once('exit', (code) => cleanup(code ?? undefined));
+
+      let nextId = 1;
+      const pending = new Map<
+        number,
+        { resolve: (v: unknown) => void; reject: (e: Error) => void }
+      >();
+
+      const writeStdin = (msg: object): void => {
+        if (child.stdin?.writable) {
+          child.stdin.write(JSON.stringify(msg) + '\n');
+        }
+      };
+
+      const send = (method: string, params?: object): Promise<unknown> => {
+        const id = nextId++;
+        return new Promise((resolve, reject) => {
+          pending.set(id, { resolve, reject });
+          writeStdin({ jsonrpc: '2.0', id, method, params: params ?? {} });
+        });
+      };
+
+      const respond = (id: number, result: object): void => {
+        writeStdin({ jsonrpc: '2.0', id, result });
+      };
+
+      let stdoutBuffer = '';
+      child.stdout?.on('data', (data: Buffer | string) => {
+        const s = typeof data === 'string' ? data : data.toString();
+        stdoutBuffer += s;
+        const lines = stdoutBuffer.split(/\r?\n/);
+        stdoutBuffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const msg = JSON.parse(line) as {
+              id?: number;
+              method?: string;
+              params?: { update?: { sessionUpdate?: string; content?: { text?: string } } };
+              result?: unknown;
+              error?: { message?: string };
+            };
+            if (msg.id !== undefined && (msg.result !== undefined || msg.error !== undefined)) {
+              const waiter = pending.get(msg.id);
+              if (waiter) {
+                pending.delete(msg.id);
+                msg.error ? waiter.reject(new Error(msg.error.message ?? String(msg.error))) : waiter.resolve(msg.result);
+              }
+              continue;
+            }
+            if (msg.method === 'session/update') {
+              const update = msg.params?.update as { sessionUpdate?: string; content?: { text?: string }; text?: string } | undefined;
+              const text = update?.content?.text ?? update?.text;
+              if (typeof text === 'string') {
+                push(text);
+              } else if (update?.sessionUpdate === 'agent_message_chunk' && update?.content?.text) {
+                push(update.content.text);
+              }
+              continue;
+            }
+            if (msg.method === 'session/request_permission' && msg.id !== undefined) {
+              respond(msg.id, { outcome: { outcome: 'selected', optionId: 'allow-once' } });
+              continue;
+            }
+            if (msg.method === 'fs/write_text_file' && msg.id !== undefined) {
+              const params = (msg as { params?: { path?: string; content?: string } }).params;
+              handleFsWrite(msg.id, params ?? {}).catch((err) => {
+                writeStdin({
+                  jsonrpc: '2.0',
+                  id: msg.id,
+                  error: { code: -32000, message: err instanceof Error ? err.message : String(err) },
+                });
+              });
+              continue;
+            }
+            if (msg.method === 'fs/read_text_file' && msg.id !== undefined) {
+              const params = (msg as { params?: { path?: string } }).params;
+              handleFsRead(msg.id, params ?? {}).catch(() => {});
+              continue;
+            }
+          } catch {
+            push(line + '\n');
+          }
+        }
+      });
+
+      child.stderr?.on('data', (data: Buffer | string) => {
+        const s = typeof data === 'string' ? data : data.toString();
+        push('[stderr] ' + s);
+      });
+
+      const workspacePath = context.workspacePath;
+      const resolveWorkspacePath = (p: string): string => {
+        const resolved = path.isAbsolute(p)
+          ? path.normalize(p)
+          : path.join(workspacePath, p);
+        const real = path.normalize(resolved);
+        if (!real.startsWith(path.normalize(workspacePath) + path.sep) && real !== path.normalize(workspacePath)) {
+          return path.join(workspacePath, path.basename(p));
+        }
+        return resolved;
+      };
+
+      const handleFsWrite = async (id: number, params: { path?: string; content?: string }): Promise<void> => {
+        const filePath = resolveWorkspacePath(params.path ?? '');
+        await fs.mkdir(path.dirname(filePath), { recursive: true });
+        await fs.writeFile(filePath, params.content ?? '', 'utf-8');
+        writeStdin({ jsonrpc: '2.0', id, result: null });
+      };
+      const handleFsRead = async (id: number, params: { path?: string }): Promise<void> => {
+        try {
+          const filePath = resolveWorkspacePath(params.path ?? '');
+          const content = await fs.readFile(filePath, 'utf-8');
+          writeStdin({ jsonrpc: '2.0', id, result: { content } });
+        } catch (err) {
+          writeStdin({
+            jsonrpc: '2.0',
+            id,
+            error: { code: -32000, message: err instanceof Error ? err.message : String(err) },
+          });
+        }
+      };
+
+      try {
+        await send('initialize', {
+          protocolVersion: 1,
+          clientCapabilities: {
+            fs: { readTextFile: true, writeTextFile: true },
+            terminal: false,
+          },
+          clientInfo: { name: 'clove', version: '0.1.0' },
+        });
+        await send('authenticate', { methodId: 'cursor_login' });
+        const result = await send('session/new', {
+          cwd: context.workspacePath,
+          mcpServers: [],
+        }) as { sessionId?: string };
+        const sessionId = result?.sessionId;
+        if (!sessionId) {
+          throw new Error('ACP session/new did not return sessionId');
+        }
+
+        const sendPrompt = async (text: string): Promise<void> => {
+          await send('session/prompt', {
+            sessionId,
+            prompt: [{ type: 'text', text }],
+          });
+        };
+
+        acpSessionByAgent.set(agentId, {
+          sessionId,
+          sendPrompt,
+          pushFeedback: (line) => push(line),
+        });
+        sendPrompt(prompt).catch(() => {});
+      } catch (err) {
+        cleanup();
+        throw err;
+      }
+
+      while (queue.length > 0 || !ended) {
+        await waitNext();
+        while (queue.length > 0) {
+          const chunk = queue.shift();
+          if (chunk) yield chunk;
+        }
+      }
+    },
+  };
+}
+
+/** One-shot -p mode (no ACP, no follow-up). */
+function runCursorStreamNonInteractive(
+  prompt: string,
+  context: AgentContext,
+  options: CursorAgentOptions
+): AsyncIterable<string> {
+  const command = options.command ?? 'agent';
+  const extraArgs = options.extraArgs ?? [];
+  const resolvedCommand = resolveCommandToPath(command);
+  const args = ['-p', prompt, '--output-format', 'text', ...extraArgs];
+
+  return {
+    async *[Symbol.asyncIterator]() {
+      if (!isCursorCliInstalled(command)) {
+        throw new Error(
+          `Cursor CLI not found (command: ${command}). ${CURSOR_INSTALL_HINT}`
+        );
+      }
+
+      const child = spawn(resolvedCommand, args, {
+        cwd: context.workspacePath,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env },
+      });
+
+      const queue: string[] = [];
+      let ended = 0;
+      let resolveWait: (() => void) | null = null;
+      const waitNext = (): Promise<void> =>
+        new Promise((resolve) => {
+          if (queue.length > 0 || ended >= 2) return void resolve();
+          resolveWait = resolve;
+        });
+      const push = (chunk: string): void => {
+        queue.push(chunk);
+        if (resolveWait) {
+          resolveWait();
+          resolveWait = null;
+        }
+      };
+
+      child.stdout?.on('data', (c: Buffer | string) =>
+        push(typeof c === 'string' ? c : c.toString())
+      );
+      child.stderr?.on('data', (c: Buffer | string) =>
+        push('[stderr] ' + (typeof c === 'string' ? c : c.toString()))
+      );
+      const onEnd = (): void => {
+        ended += 1;
+        if (ended >= 2 && resolveWait) {
+          resolveWait();
+          resolveWait = null;
+        }
+      };
+      child.stdout?.once('end', onEnd);
+      child.stderr?.once('end', onEnd);
+
+      while (queue.length > 0 || ended < 2) {
+        await waitNext();
+        while (queue.length > 0) {
+          const chunk = queue.shift();
+          if (chunk) yield chunk;
+        }
+      }
+    },
+  };
+}
+
+function runCursorStream(
+  prompt: string,
+  context: AgentContext,
+  options: CursorAgentOptions,
+  acpSessionByAgent: Map<AgentId, AcpSession>
+): AsyncIterable<string> {
+  if (options.nonInteractive) {
+    return runCursorStreamNonInteractive(prompt, context, options);
+  }
+  return runCursorStreamAcp(prompt, context, options, acpSessionByAgent);
+}
+
+export function createCursorAgent(options: CursorAgentOptions = {}): AgentPlugin {
+  const acpSessionByAgent = new Map<AgentId, AcpSession>();
+
+  return {
+    async run(prompt: string, context: AgentContext): Promise<string> {
+      const parts: string[] = [];
+      for await (const chunk of this.stream(prompt, context)) {
+        parts.push(chunk);
+      }
+      return parts.join('');
+    },
+
+    stream(prompt: string, context: AgentContext): AsyncIterable<string> {
+      return runCursorStream(prompt, context, options, acpSessionByAgent);
+    },
+
+    async handleInput(agentId: AgentId, input: string): Promise<void | string> {
+      const session = acpSessionByAgent.get(agentId);
+      if (!session) {
+        console.error('[clove] send-input: no ACP session for', agentId, '(known:', [...acpSessionByAgent.keys()], ')');
+        return '\n[No active session for this agent; it may have exited. Start a new agent.]\n';
+      }
+      session.pushFeedback?.('\n[Follow-up sent.]\n');
+      try {
+        await session.sendPrompt(input);
+      } catch (err) {
+        console.error('[clove] send-input ACP error:', err);
+        return '\n[Failed to send follow-up: ' + (err instanceof Error ? err.message : String(err)) + ']\n';
+      }
+      return undefined;
+    },
+  };
+}

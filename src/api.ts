@@ -1,0 +1,69 @@
+/**
+ * Unified API layer: same surface for CLI and HTTP server.
+ * Exposes orchestrator operations and stream as envelope format.
+ */
+
+import type {
+  AgentId,
+  SourceRepo,
+  StreamEnvelope,
+} from './types.js';
+import type { AgentRecord, Orchestrator } from './orchestrator.js';
+
+export type { AgentRecord, StreamEnvelope };
+
+export interface StartAgentParams {
+  agentId: string;
+  sourceRepo: SourceRepo;
+  runtimeKey: string;
+  pluginKey: string;
+  prompt: string;
+}
+
+export interface StartAgentResult {
+  path: string;
+  branch: string;
+  mainRepoRoot?: string;
+  repoPath: string;
+}
+
+/**
+ * Unified API: wraps an Orchestrator and exposes stream as StreamEnvelope
+ * so CLI and HTTP (SSE) can share the same contract.
+ */
+export class CloveApi {
+  constructor(private readonly orchestrator: Orchestrator) {}
+
+  async startAgent(params: StartAgentParams): Promise<StartAgentResult> {
+    return this.orchestrator.startAgent(
+      params.agentId,
+      params.sourceRepo,
+      params.runtimeKey,
+      params.pluginKey,
+      params.prompt
+    );
+  }
+
+  async stopAgent(agentId: AgentId): Promise<void> {
+    return this.orchestrator.stopAgent(agentId);
+  }
+
+  listAgents(): AgentRecord[] {
+    return this.orchestrator.listAgents();
+  }
+
+  /**
+   * Stream agent output as envelope format (type + payload).
+   * Currently all chunks are { type: 'agent', payload }; 'log' reserved for runtime stdout/stderr.
+   */
+  async *stream(agentId: AgentId): AsyncIterable<StreamEnvelope> {
+    const raw = this.orchestrator.streamLogs(agentId);
+    for await (const chunk of raw) {
+      yield { type: 'agent', payload: chunk };
+    }
+  }
+
+  async sendInput(agentId: AgentId, input: string): Promise<void> {
+    return this.orchestrator.sendInput(agentId, input);
+  }
+}
