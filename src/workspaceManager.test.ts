@@ -66,6 +66,17 @@ describe('WorkspaceManager', () => {
       expect(result.branch).toMatch(/^clove\/agent-with-slashes$/);
     });
 
+    it('uses custom branchName as full branch when provided', async () => {
+      const result = await manager.createWorkspace(
+        'my-agent',
+        { type: 'path', path: tmpDir },
+        'local',
+        { branchName: 'feature/add-tests' }
+      );
+      expect(result.path).toContain('my-agent');
+      expect(result.branch).toBe('feature/add-tests');
+    });
+
     it('throws if source path is not a directory', async () => {
       await expect(
         manager.createWorkspace(

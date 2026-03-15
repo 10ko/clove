@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { listAgents, type AgentRecord } from './api';
+import { listAgents, getServerInfo, type AgentRecord } from './api';
 import { AgentList } from './AgentList';
 import { AgentDetail } from './AgentDetail';
 import { StartAgentForm } from './StartAgentForm';
@@ -12,6 +12,11 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [newAgentModalOpen, setNewAgentModalOpen] = useState(false);
+  const [serverCwd, setServerCwd] = useState<string>('');
+
+  useEffect(() => {
+    getServerInfo().then((info) => setServerCwd(info.cwd)).catch(() => {});
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -82,7 +87,11 @@ export default function App() {
           onClose={() => setNewAgentModalOpen(false)}
           title="New agent"
         >
-          <StartAgentForm onStarted={handleAgentStarted} />
+          <StartAgentForm
+            onStarted={handleAgentStarted}
+            defaultRepoPath={serverCwd || undefined}
+            isOpen={newAgentModalOpen}
+          />
         </Modal>
 
         {selectedId && (

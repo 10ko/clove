@@ -71,12 +71,17 @@ export function createServer(api: CloveApi): http.Server {
         const repoPath = body.repoPath as string | undefined;
         const repoUrl = body.repoUrl as string | undefined;
         const prompt = body.prompt as string | undefined;
-        const agentId = (body.agentId as string | undefined) ?? `agent-${Date.now()}`;
+        const agentId = body.agentId as string | undefined;
+        const branchName = body.branchName as string | undefined;
         const runtimeKey = (body.runtimeKey as string | undefined) ?? 'local';
         const pluginKey = (body.pluginKey as string | undefined) ?? 'cursor';
         const repo = repoUrl ?? repoPath;
-        if (!repo || !prompt) {
-          jsonResponse(res, 400, { error: 'repoPath or repoUrl, and prompt required' });
+        if (!repo) {
+          jsonResponse(res, 400, { error: 'repoPath or repoUrl required' });
+          return;
+        }
+        if (!agentId || typeof agentId !== 'string' || !agentId.trim()) {
+          jsonResponse(res, 400, { error: 'agentId required' });
           return;
         }
         const sourceRepo =
@@ -84,13 +89,20 @@ export function createServer(api: CloveApi): http.Server {
             ? { type: 'url' as const, url: repoUrl }
             : { type: 'path' as const, path: repoPath! };
         const result = await api.startAgent({
-          agentId,
+          agentId: agentId.trim(),
           sourceRepo,
           runtimeKey,
           pluginKey,
-          prompt,
+          prompt: prompt ?? '',
+          ...(branchName != null && branchName !== '' && { branchName: branchName.trim() }),
         });
         jsonResponse(res, 200, result);
+        return;
+      }
+
+      // GET /api/info — server cwd (for default repo path in dashboard)
+      if (req.method === 'GET' && base === 'api' && sub === 'info') {
+        jsonResponse(res, 200, { cwd: process.cwd() });
         return;
       }
 
@@ -194,6 +206,7 @@ export function runServer(port: number): { server: http.Server; api: CloveApi } 
       console.log('  Dashboard: http://localhost:' + port);
     }
     console.log('  API:');
+    console.log('  GET  /api/info             — server info (cwd)');
     console.log('  GET  /api/agents           — list agents');
     console.log('  POST /api/agents/start     — start (body: { repoPath, prompt, agentId? })');
     console.log('  POST /api/agents/:id/stop  — stop agent');

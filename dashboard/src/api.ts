@@ -17,8 +17,12 @@ export interface ListAgentsResponse {
 export interface StartAgentBody {
   repoPath?: string;
   repoUrl?: string;
-  prompt: string;
-  agentId?: string;
+  /** Optional: initial prompt for the agent. Omit to start and send later via send-input. */
+  prompt?: string;
+  /** Required: unique id for the agent (e.g. memorable name like swift-tiger). */
+  agentId: string;
+  /** Optional: branch segment (branch will be clove/<branchName>). Defaults to agentId. */
+  branchName?: string;
   runtimeKey?: string;
   pluginKey?: string;
 }
@@ -31,6 +35,16 @@ export interface StartAgentResponse {
 }
 
 export type StreamEnvelope = { type: 'log'; payload: string } | { type: 'agent'; payload: string };
+
+export interface ServerInfo {
+  cwd: string;
+}
+
+export async function getServerInfo(): Promise<ServerInfo> {
+  const res = await fetch(`${API_BASE}/info`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
 
 export async function listAgents(): Promise<AgentRecord[]> {
   const res = await fetch(`${API_BASE}/agents`);

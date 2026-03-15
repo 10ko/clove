@@ -48,7 +48,8 @@ export class Orchestrator {
     sourceRepo: SourceRepo,
     runtimeKey: string,
     pluginKey: string,
-    prompt: string
+    prompt: string,
+    options?: { branchName?: string }
   ): Promise<{
     path: string;
     branch: string;
@@ -68,7 +69,8 @@ export class Orchestrator {
       await this.workspaceManager.createWorkspace(
         agentId,
         sourceRepo,
-        runtimeType
+        runtimeType,
+        options
       );
     this.agents.set(agentId, {
       agentId,

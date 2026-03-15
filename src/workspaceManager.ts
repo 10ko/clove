@@ -29,10 +29,22 @@ async function pathExists(p: string): Promise<boolean> {
   }
 }
 
-/** Sanitize agent id for use in a git branch name. */
-function branchNameFor(agentId: AgentId): string {
-  const safe = agentId.replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-');
-  return `${BRANCH_PREFIX}${safe || 'agent'}`;
+/** Sanitize a string for use as a branch segment (no spaces, no repeated dashes). */
+function sanitizeBranchSegment(s: string): string {
+  const safe = s.replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  return safe || 'agent';
+}
+
+/**
+ * Resolve the git branch name.
+ * - When customBranchName is provided: use it as the full branch name (no clove/ prefix).
+ * - When not provided: use clove/<sanitized(agentId)>.
+ */
+function resolveBranchName(agentId: AgentId, customBranchName?: string): string {
+  if (customBranchName != null && customBranchName.trim() !== '') {
+    return customBranchName.trim();
+  }
+  return `${BRANCH_PREFIX}${sanitizeBranchSegment(agentId)}`;
 }
 
 export interface WorkspaceManagerOptions {
@@ -61,30 +73,33 @@ export class WorkspaceManager {
   /**
    * Create an isolated workspace for an agent.
    * - Local: git worktree from source repo on a new branch.
-   * - Remote: stub for Phase 5 (clone + branch); throws for now.
+   * - Remote: clone + branch.
+   * @param options.branchName - Optional full branch name. When omitted, defaults to clove/<agentId>.
    */
   async createWorkspace(
     agentId: AgentId,
     sourceRepo: SourceRepo,
-    runtimeType: RuntimeType
+    runtimeType: RuntimeType,
+    options?: { branchName?: string }
   ): Promise<WorkspaceResult> {
     if (runtimeType === 'remote') {
-      return this.createWorkspaceRemote(agentId, sourceRepo);
+      return this.createWorkspaceRemote(agentId, sourceRepo, options);
     }
     if (sourceRepo.type !== 'path') {
       throw new Error('Local runtime requires sourceRepo.type === "path"');
     }
-    return this.createWorkspaceLocal(agentId, sourceRepo.path);
+    return this.createWorkspaceLocal(agentId, sourceRepo.path, options);
   }
 
   private async createWorkspaceLocal(
     agentId: AgentId,
-    sourceRepoPath: string
+    sourceRepoPath: string,
+    options?: { branchName?: string }
   ): Promise<WorkspaceResult> {
     const repoRoot = path.resolve(sourceRepoPath);
     await this.ensureGitRepo(repoRoot);
 
-    const branch = branchNameFor(agentId);
+    const branch = resolveBranchName(agentId, options?.branchName);
     const base =
       this.options.worktreeBasePath ?? path.join(repoRoot, '.clove', 'worktrees');
     const worktreePath = path.join(base, agentId);
@@ -108,7 +123,8 @@ export class WorkspaceManager {
 
   private async createWorkspaceRemote(
     agentId: AgentId,
-    sourceRepo: SourceRepo
+    sourceRepo: SourceRepo,
+    options?: { branchName?: string }
   ): Promise<WorkspaceResult> {
     if (sourceRepo.type !== 'url') {
       throw new Error('Remote runtime requires sourceRepo.type === "url"');
@@ -123,7 +139,7 @@ export class WorkspaceManager {
     execSync(`git clone "${sourceRepo.url}" "${clonePath}"`, {
       stdio: 'pipe',
     });
-    const branch = branchNameFor(agentId);
+    const branch = resolveBranchName(agentId, options?.branchName);
     execSync(`git checkout -b "${branch}"`, {
       cwd: clonePath,
       stdio: 'pipe',

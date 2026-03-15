@@ -15,6 +15,16 @@ import { WorkspaceManager } from './workspaceManager.js';
 import { Orchestrator } from './orchestrator.js';
 import { CloveApi } from './api.js';
 import { createServer, runServer } from './server.js';
+import { uniqueNamesGenerator, adjectives, animals } from 'unique-names-generator';
+
+function generateMemorableId(): string {
+  return uniqueNamesGenerator({
+    dictionaries: [adjectives, animals],
+    length: 2,
+    separator: '-',
+    style: 'lowerCase',
+  });
+}
 
 const HELP = `
 clove – orchestrate multiple AI coding agents
@@ -24,7 +34,7 @@ USAGE
   clove [COMMAND] ...      Run a single command and exit
 
 COMMANDS
-  start       Start an agent (runtime, plugin, prompt)
+  start       Start an agent (repo required; prompt optional)
   stop        Stop a running agent
   stream      Stream logs and agent output
   send-input  Send input to a running agent
@@ -51,7 +61,7 @@ EXAMPLES
 `.trim();
 
 const SHELL_HELP = `
-  start --repo <path|url> --prompt "<text>" [--runtime local|docker] [--agent cursor]
+  start --repo <path|url> [--agent-id <id>] [--branch <name>] [--prompt "<text>"] [--runtime local|docker] [--agent cursor]
   list                                    List running agents
   stream <agent-id>                       Stream agent output (Ctrl+C to exit stream)
   send-input <agent-id> "<input>"         Send input to agent
@@ -275,12 +285,13 @@ async function runCommand(
 
   if (command === 'start') {
     const repo = getArg(rest, '--repo');
-    const prompt = getArg(rest, '--prompt');
-    const agentId = getArg(rest, '--agent-id') ?? `agent-${Date.now()}`;
+    const prompt = getArg(rest, '--prompt') ?? '';
+    const agentId = getArg(rest, '--agent-id') ?? generateMemorableId();
+    const branchName = getArg(rest, '--branch');
     const runtimeKey = getArg(rest, '--runtime') ?? 'local';
     const pluginKey = getArg(rest, '--agent') ?? getArg(rest, '--plugin') ?? 'cursor';
-    if (!repo || !prompt) {
-      console.error('start requires --repo <path-or-url> and --prompt <text>');
+    if (!repo) {
+      console.error('start requires --repo <path-or-url>');
       return false;
     }
     const sourceRepo = parseSourceRepo(repo);
@@ -294,6 +305,7 @@ async function runCommand(
       runtimeKey,
       pluginKey,
       prompt,
+      ...(branchName != null && branchName !== '' && { branchName }),
     });
     console.log(`Started agent ${agentId} (runtime=${runtimeKey}, agent=${pluginKey})`);
     console.log(`  workspace: ${result.path}`);

@@ -68,6 +68,7 @@ POST /api/agents/start
 - Use **repoPath** for a local path (local runtime), or **repoUrl** for a Git URL (required for Docker runtime).
 - **runtimeKey**: `local` (default) or `docker`.
 - **pluginKey**: `cursor` (only supported agent for now).
+- **prompt** (optional): initial prompt; omit to start and send later via send-input.
 - **agentId**, **runtimeKey**, **pluginKey** are optional.
 
 **Response:** `200`
@@ -81,7 +82,7 @@ POST /api/agents/start
 }
 ```
 
-**Errors:** `400` if `repoPath` or `prompt` missing.
+**Errors:** `400` if `repoPath` (or `repoUrl` for Docker) missing.
 
 ### Stop agent
 

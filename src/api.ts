@@ -18,6 +18,8 @@ export interface StartAgentParams {
   runtimeKey: string;
   pluginKey: string;
   prompt: string;
+  /** Optional branch segment (branch will be clove/<branchName>). Defaults to agentId. */
+  branchName?: string;
 }
 
 export interface StartAgentResult {
@@ -40,7 +42,8 @@ export class CloveApi {
       params.sourceRepo,
       params.runtimeKey,
       params.pluginKey,
-      params.prompt
+      params.prompt,
+      params.branchName != null ? { branchName: params.branchName } : undefined
     );
   }
 
