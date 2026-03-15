@@ -48,7 +48,6 @@ export function StartAgentForm({ onStarted }: Props) {
 
   return (
     <form onSubmit={handleSubmit} style={formStyle}>
-      <h2 style={headingStyle}>Start agent</h2>
       {error && <div style={errorStyle}>{error}</div>}
       <div style={rowStyle}>
         <label style={labelStyle}>
@@ -116,17 +115,9 @@ export function StartAgentForm({ onStarted }: Props) {
 }
 
 const formStyle: React.CSSProperties = {
-  marginBottom: '2rem',
-  padding: '1.25rem',
-  borderRadius: '0.5rem',
-  background: '#1e293b',
-  border: '1px solid #334155',
-};
-
-const headingStyle: React.CSSProperties = {
-  margin: '0 0 1rem',
-  fontSize: '1rem',
-  fontWeight: 600,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0',
 };
 
 const errorStyle: React.CSSProperties = {

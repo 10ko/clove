@@ -26,154 +26,183 @@ export function AgentList({ agents, selectedId, onSelect, onStop }: Props) {
     }
   }
 
-  if (agents.length === 0) {
-    return (
-      <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
-        No agents. Start one above.
-      </p>
-    );
-  }
-
   return (
     <section>
-      <h2 style={headingStyle}>Agents</h2>
-      <ul style={listStyle}>
+      <h2 style={sectionHeadingStyle}>Agents</h2>
+      <div style={gridStyle}>
         {agents.map((a) => (
-          <li
+          <article
             key={a.agentId}
-            style={{
-              ...itemStyle,
-              ...(selectedId === a.agentId ? itemSelectedStyle : {}),
-            }}
+            role="button"
+            tabIndex={0}
             onClick={() => onSelect(a.agentId)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onSelect(a.agentId);
+              }
+            }}
+            style={{
+              ...cardStyle,
+              ...(selectedId === a.agentId ? cardSelectedStyle : {}),
+            }}
           >
-            <div style={itemMainStyle}>
-              <span style={idStyle}>{a.agentId}</span>
-              <span style={statusBadgeStyle(a.status)}>{a.status}</span>
-              {a.agentState && (
-                <span style={agentStateStyle(a.agentState)}>{a.agentState}</span>
-              )}
-              <span style={metaStyle}>{a.runtimeKey} / {a.pluginKey}</span>
+            <div style={cardHeaderStyle}>
+              <span style={cardIdStyle}>{a.agentId}</span>
+              <div style={badgesStyle}>
+                <span style={statusBadgeStyle(a.status)}>{a.status}</span>
+                {a.agentState && (
+                  <span style={agentStateBadgeStyle(a.agentState)}>{a.agentState}</span>
+                )}
+              </div>
             </div>
-            <div style={pathStyle} title={a.workspacePath}>
+            <div style={cardMetaStyle}>
+              {a.runtimeKey} / {a.pluginKey}
+            </div>
+            <div style={cardPathStyle} title={a.workspacePath}>
               {a.workspacePath}
             </div>
-            <a
-              href={vscodeUrlForPath(a.workspacePath)}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              style={openVscodeBtnStyle}
-              title="Open workspace in VS Code"
-            >
-              VS Code
-            </a>
-            <button
-              type="button"
-              onClick={(e) => handleStop(e, a.agentId)}
-              style={stopBtnStyle}
-              title="Stop agent"
-            >
-              Stop
-            </button>
-          </li>
+            <div style={cardActionsStyle}>
+              <a
+                href={vscodeUrlForPath(a.workspacePath)}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                style={actionLinkStyle}
+                title="Open workspace in VS Code"
+              >
+                VS Code
+              </a>
+              <button
+                type="button"
+                onClick={(e) => handleStop(e, a.agentId)}
+                style={actionBtnStyle}
+                title="Stop agent"
+              >
+                Stop
+              </button>
+            </div>
+          </article>
         ))}
-      </ul>
+      </div>
     </section>
   );
 }
 
-const headingStyle: React.CSSProperties = {
-  margin: '0 0 0.75rem',
+const sectionHeadingStyle: React.CSSProperties = {
+  margin: '0 0 1rem',
   fontSize: '1rem',
   fontWeight: 600,
+  color: '#e2e8f0',
 };
 
-const listStyle: React.CSSProperties = {
-  listStyle: 'none',
-  margin: 0,
-  padding: 0,
+const gridStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(18rem, 1fr))',
+  gap: '1rem',
 };
 
-const itemStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '0.75rem',
-  padding: '0.75rem 1rem',
-  marginBottom: '0.5rem',
-  borderRadius: '0.375rem',
+const cardStyle: React.CSSProperties = {
+  padding: '1rem',
+  borderRadius: '0.5rem',
   background: '#1e293b',
   border: '1px solid #334155',
   cursor: 'pointer',
-};
-
-const itemSelectedStyle: React.CSSProperties = {
-  borderColor: '#38bdf8',
-  boxShadow: '0 0 0 1px #38bdf8',
-};
-
-const itemMainStyle: React.CSSProperties = {
   display: 'flex',
-  alignItems: 'center',
+  flexDirection: 'column',
+  gap: '0.5rem',
+  minHeight: '8rem',
+  transition: 'border-color 0.15s, box-shadow 0.15s',
+};
+
+const cardSelectedStyle: React.CSSProperties = {
+  borderColor: '#38bdf8',
+  boxShadow: '0 0 0 2px rgba(56, 189, 248, 0.25)',
+};
+
+const cardHeaderStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
   gap: '0.5rem',
   minWidth: 0,
 };
 
-const idStyle: React.CSSProperties = {
-  fontWeight: 500,
-  flexShrink: 0,
+const cardIdStyle: React.CSSProperties = {
+  fontWeight: 600,
+  fontSize: '0.9375rem',
+  color: '#e2e8f0',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+};
+
+const badgesStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: '0.35rem',
 };
 
 function statusBadgeStyle(status: string): React.CSSProperties {
   const isRunning = status === 'running';
   return {
-    fontSize: '0.75rem',
-    padding: '0.125rem 0.375rem',
+    fontSize: '0.7rem',
+    padding: '0.15rem 0.4rem',
     borderRadius: '0.25rem',
     background: isRunning ? 'rgba(34, 197, 94, 0.2)' : '#334155',
     color: isRunning ? '#22c55e' : '#94a3b8',
   };
 }
 
-function agentStateStyle(agentState: 'busy' | 'waiting'): React.CSSProperties {
+function agentStateBadgeStyle(agentState: 'busy' | 'waiting'): React.CSSProperties {
   return {
     fontSize: '0.7rem',
-    padding: '0.1rem 0.35rem',
-    borderRadius: '0.2rem',
+    padding: '0.15rem 0.4rem',
+    borderRadius: '0.25rem',
     background: agentState === 'busy' ? 'rgba(251, 191, 36, 0.2)' : 'rgba(34, 197, 94, 0.2)',
     color: agentState === 'busy' ? '#fbbf24' : '#22c55e',
   };
 }
 
-const metaStyle: React.CSSProperties = {
+const cardMetaStyle: React.CSSProperties = {
   fontSize: '0.75rem',
   color: '#64748b',
 };
 
-const pathStyle: React.CSSProperties = {
+const cardPathStyle: React.CSSProperties = {
   flex: 1,
-  minWidth: 0,
+  fontSize: '0.8125rem',
+  color: '#94a3b8',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
-  fontSize: '0.875rem',
-  color: '#64748b',
+  minHeight: 0,
 };
 
-const openVscodeBtnStyle: React.CSSProperties = {
-  flexShrink: 0,
+const cardActionsStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: '0.5rem',
+  marginTop: '0.25rem',
+  paddingTop: '0.5rem',
+  borderTop: '1px solid #334155',
+};
+
+const actionLinkStyle: React.CSSProperties = {
   padding: '0.25rem 0.5rem',
   fontSize: '0.75rem',
-  borderRadius: '0.375rem',
+  borderRadius: '0.25rem',
   border: '1px solid #334155',
-  background: '#1e293b',
-  color: '#e2e8f0',
+  background: 'transparent',
+  color: '#94a3b8',
   textDecoration: 'none',
   cursor: 'pointer',
 };
 
-const stopBtnStyle: React.CSSProperties = {
-  flexShrink: 0,
+const actionBtnStyle: React.CSSProperties = {
   padding: '0.25rem 0.5rem',
   fontSize: '0.75rem',
+  borderRadius: '0.25rem',
+  border: '1px solid #334155',
+  background: 'transparent',
+  color: '#94a3b8',
+  cursor: 'pointer',
 };

@@ -3,12 +3,15 @@ import { listAgents, type AgentRecord } from './api';
 import { AgentList } from './AgentList';
 import { AgentDetail } from './AgentDetail';
 import { StartAgentForm } from './StartAgentForm';
+import { Modal } from './Modal';
+import { EmptyState } from './EmptyState';
 
 export default function App() {
   const [agents, setAgents] = useState<AgentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [newAgentModalOpen, setNewAgentModalOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -25,16 +28,30 @@ export default function App() {
 
   useEffect(() => {
     refresh();
-    // Poll every 3s when OK; every 10s when API unreachable (avoids proxy error spam)
     const interval = setInterval(refresh, error ? 10000 : 3000);
     return () => clearInterval(interval);
   }, [refresh, error]);
 
+  const handleAgentStarted = useCallback(() => {
+    refresh();
+    setNewAgentModalOpen(false);
+  }, [refresh]);
+
   return (
     <>
       <header style={headerStyle}>
-        <h1 style={titleStyle}>Clove</h1>
-        <p style={subStyle}>Agent orchestrator</p>
+        <div>
+          <h1 style={titleStyle}>Clove</h1>
+          <p style={subStyle}>Agent orchestrator</p>
+        </div>
+        <button
+          type="button"
+          className="btn-primary"
+          onClick={() => setNewAgentModalOpen(true)}
+          style={newAgentBtnStyle}
+        >
+          New agent
+        </button>
       </header>
 
       <main style={mainStyle}>
@@ -47,10 +64,10 @@ export default function App() {
           </div>
         )}
 
-        <StartAgentForm onStarted={refresh} />
-
         {loading ? (
-          <p>Loading agents…</p>
+          <p style={loadingStyle}>Loading agents…</p>
+        ) : agents.length === 0 ? (
+          <EmptyState onNewAgent={() => setNewAgentModalOpen(true)} />
         ) : (
           <AgentList
             agents={agents}
@@ -59,6 +76,14 @@ export default function App() {
             onStop={refresh}
           />
         )}
+
+        <Modal
+          isOpen={newAgentModalOpen}
+          onClose={() => setNewAgentModalOpen(false)}
+          title="New agent"
+        >
+          <StartAgentForm onStarted={handleAgentStarted} />
+        </Modal>
 
         {selectedId && (
           <AgentDetail
@@ -73,8 +98,24 @@ export default function App() {
 }
 
 const headerStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
   padding: '1rem 1.5rem',
   borderBottom: '1px solid #334155',
+};
+
+const newAgentBtnStyle: React.CSSProperties = {
+  padding: '0.5rem 1rem',
+  fontSize: '0.875rem',
+  fontWeight: 500,
+  borderRadius: '0.375rem',
+  cursor: 'pointer',
+};
+
+const loadingStyle: React.CSSProperties = {
+  color: '#64748b',
+  fontSize: '0.875rem',
 };
 
 const titleStyle: React.CSSProperties = {

@@ -40,6 +40,21 @@ button:hover {
   background: #334155;
 }
 
+button.btn-primary {
+  background: #38bdf8;
+  color: #0f172a;
+  border: none;
+}
+
+button.btn-primary:hover {
+  background: #7dd3fc;
+}
+
+button.modal-close:hover {
+  background: #334155;
+  color: #e2e8f0;
+}
+
 button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
