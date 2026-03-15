@@ -60,10 +60,10 @@ node --input-type=module -e "import { WorkspaceManager } from './dist/index.js';
 | Step | Command | Expected |
 |------|---------|----------|
 | Tests | `npm test` | All tests pass, including integration test for start/stream/input/stop |
-| Start agent | `npm run dev -- start --repo . --prompt "hello"` (or equivalent) | Agent starts; stream shows output (e.g. from echo plugin) |
+| Start agent | `npm run dev -- start --repo . --prompt "hello"` (or equivalent) | Agent starts; stream shows output (Cursor plugin) |
 | List | `npm run dev -- list` | Shows the running agent and status |
 | Stream | `npm run dev -- stream <agent-id>` | Live stream of logs/agent output |
-| Send input | `npm run dev -- send-input <agent-id> "some input"` | Input is delivered (echo or stub reflects it) |
+| Send input | `npm run dev -- send-input <agent-id> "some input"` | Input is delivered (Cursor reflects it in stream) |
 | Stop | `npm run dev -- stop <agent-id>` | Agent stops; workspace can be cleaned up |
 
 Exact CLI flags may vary; adjust to whatever the implementation uses (e.g. `--source-repo`, `--agent-id`).
@@ -173,9 +173,9 @@ dashboard
 
 In the browser: choose **Runtime: local**, **Agent: cursor**, set **Repo path** to `/path/to/clove` (or another repo), enter a prompt (e.g. "list files in the project root"), click **Start agent**. Open the agent and confirm the stream shows Cursor’s output.
 
-**5. Compare with echo/delay**
+**5. Optional: compare runtimes**
 
-Same steps but use `--agent echo` or `--agent delay` (no Cursor CLI required). Echo returns immediately; delay adds a short pause between lines. Confirms the plugin selection and streaming path work.
+Use `--runtime docker` with a repo URL to test the Docker runtime. Use `--agent cursor` (default) for the Cursor plugin.
 
 ---
 

@@ -1,8 +1,6 @@
 /**
- * Agent plugins: Cursor, Claude Code, echo stub, etc.
+ * Agent plugins: Cursor (and future Claude Code, etc.).
  */
 
-export { createEchoAgent } from './echo.js';
-export { createDelayAgent } from './delay.js';
 export { createCursorAgent } from './cursor.js';
 export type { CursorAgentOptions } from './cursor.js';

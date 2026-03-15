@@ -51,7 +51,7 @@ interface AgentPlugin {
 
 **Context** has `workspacePath`, `agentId`, and optional extra fields.
 
-**Example:** See `src/plugins/agent/echo.ts`, `src/plugins/agent/delay.ts`, and `src/plugins/agent/cursor.ts` (Cursor CLI).
+**Example:** See `src/plugins/agent/cursor.ts` (Cursor CLI).
 
 **Register:** In `src/cli.ts` and `src/server.ts`, add your plugin to the `plugins` object. Values are **factories** that return an `AgentPlugin`, e.g. `myAgent: () => createMyAgent()`.
 
@@ -82,7 +82,7 @@ So for a new runtime that needs an isolated copy of the repo, use `runtimeType: 
 
 ## CLI and API
 
-- **CLI:** `start --repo <path-or-url> --prompt "..." [--runtime local|docker] [--agent echo|delay]`
+- **CLI:** `start --repo <path-or-url> --prompt "..." [--runtime local|docker] [--agent cursor]`
 - **API:** `POST /api/agents/start` body can include `runtimeKey`, `pluginKey`, and `repoUrl` (or `repoPath`).
 
 Docker requires a repo **URL**; local accepts a path.

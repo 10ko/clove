@@ -21,8 +21,6 @@ export type { AgentRecord, OrchestratorOptions } from './orchestrator.js';
 export { CloveApi } from './api.js';
 export type { StartAgentParams, StartAgentResult } from './api.js';
 export { createServer, runServer } from './server.js';
-export { createEchoAgent } from './plugins/agent/echo.js';
-export { createDelayAgent } from './plugins/agent/delay.js';
 export { createCursorAgent } from './plugins/agent/cursor.js';
 export type { CursorAgentOptions } from './plugins/agent/cursor.js';
 export { createLocalRuntime } from './plugins/runtime/local.js';

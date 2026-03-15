@@ -8,8 +8,6 @@ import fs from 'node:fs';
 import http from 'node:http';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { createEchoAgent } from './plugins/agent/echo.js';
-import { createDelayAgent } from './plugins/agent/delay.js';
 import { createCursorAgent } from './plugins/agent/cursor.js';
 import { createLocalRuntime } from './plugins/runtime/local.js';
 import { createDockerRuntime } from './plugins/runtime/docker.js';
@@ -53,7 +51,7 @@ EXAMPLES
 `.trim();
 
 const SHELL_HELP = `
-  start --repo <path|url> --prompt "<text>" [--runtime local|docker] [--agent echo|delay]
+  start --repo <path|url> --prompt "<text>" [--runtime local|docker] [--agent cursor]
   list                                    List running agents
   stream <agent-id>                       Stream agent output (Ctrl+C to exit stream)
   send-input <agent-id> "<input>"         Send input to agent
@@ -236,8 +234,6 @@ function createApi(): CloveApi {
       docker: createDockerRuntime(),
     },
     plugins: {
-      echo: createEchoAgent,
-      delay: () => createDelayAgent(),
       cursor: () => createCursorAgent(),
     },
   });
@@ -282,7 +278,7 @@ async function runCommand(
     const prompt = getArg(rest, '--prompt');
     const agentId = getArg(rest, '--agent-id') ?? `agent-${Date.now()}`;
     const runtimeKey = getArg(rest, '--runtime') ?? 'local';
-    const pluginKey = getArg(rest, '--agent') ?? getArg(rest, '--plugin') ?? 'echo';
+    const pluginKey = getArg(rest, '--agent') ?? getArg(rest, '--plugin') ?? 'cursor';
     if (!repo || !prompt) {
       console.error('start requires --repo <path-or-url> and --prompt <text>');
       return false;

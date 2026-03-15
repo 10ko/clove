@@ -37,7 +37,7 @@ GET /api/agents
       "status": "running",
       "workspacePath": "/path/to/worktree",
       "runtimeKey": "local",
-      "pluginKey": "echo",
+      "pluginKey": "cursor",
       "agentState": "waiting"
     }
   ]
@@ -61,13 +61,13 @@ POST /api/agents/start
   "prompt": "Add tests for auth",
   "agentId": "agent-123",
   "runtimeKey": "local",
-  "pluginKey": "echo"
+  "pluginKey": "cursor"
 }
 ```
 
 - Use **repoPath** for a local path (local runtime), or **repoUrl** for a Git URL (required for Docker runtime).
 - **runtimeKey**: `local` (default) or `docker`.
-- **pluginKey**: `echo` (default) or `delay`.
+- **pluginKey**: `cursor` (only supported agent for now).
 - **agentId**, **runtimeKey**, **pluginKey** are optional.
 
 **Response:** `200`
@@ -120,7 +120,7 @@ GET /api/agents/:id/stream
 Server-Sent Events; each event `data` is a JSON string of one `StreamEnvelope`:
 
 ```
-data: {"type":"agent","payload":"[echo] workspace=... agentId=...\n"}
+data: {"type":"agent","payload":"...agent output...\n"}
 data: {"type":"agent","payload":"Echo: Add tests\n"}
 data: {"type":"agent","payload":"Done.\n"}
 ```

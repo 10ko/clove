@@ -6,11 +6,11 @@ interface Props {
 }
 
 const RUNTIMES = ['local', 'docker'] as const;
-const PLUGINS = ['echo', 'delay', 'cursor'] as const;
+const PLUGINS = ['cursor'] as const;
 
 export function StartAgentForm({ onStarted }: Props) {
   const [runtimeKey, setRuntimeKey] = useState<string>('local');
-  const [pluginKey, setPluginKey] = useState<string>('echo');
+  const [pluginKey, setPluginKey] = useState<string>('cursor');
   const [repoPath, setRepoPath] = useState('');
   const [repoUrl, setRepoUrl] = useState('');
   const [prompt, setPrompt] = useState('');

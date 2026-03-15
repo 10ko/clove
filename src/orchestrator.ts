@@ -41,7 +41,7 @@ export class Orchestrator {
 
   /**
    * Start an agent: create workspace, run runtime + plugin.
-   * Phase 2: only 'local' runtime and 'echo' plugin are used.
+   * Uses registered runtimes and plugins (e.g. local + cursor).
    */
   async startAgent(
     agentId: AgentId,

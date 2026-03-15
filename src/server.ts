@@ -11,8 +11,6 @@ import { Orchestrator } from './orchestrator.js';
 import { WorkspaceManager } from './workspaceManager.js';
 import { createLocalRuntime } from './plugins/runtime/local.js';
 import { createDockerRuntime } from './plugins/runtime/docker.js';
-import { createEchoAgent } from './plugins/agent/echo.js';
-import { createDelayAgent } from './plugins/agent/delay.js';
 import { createCursorAgent } from './plugins/agent/cursor.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -75,7 +73,7 @@ export function createServer(api: CloveApi): http.Server {
         const prompt = body.prompt as string | undefined;
         const agentId = (body.agentId as string | undefined) ?? `agent-${Date.now()}`;
         const runtimeKey = (body.runtimeKey as string | undefined) ?? 'local';
-        const pluginKey = (body.pluginKey as string | undefined) ?? 'echo';
+        const pluginKey = (body.pluginKey as string | undefined) ?? 'cursor';
         const repo = repoUrl ?? repoPath;
         if (!repo || !prompt) {
           jsonResponse(res, 400, { error: 'repoPath or repoUrl, and prompt required' });
@@ -185,8 +183,6 @@ export function runServer(port: number): { server: http.Server; api: CloveApi } 
       docker: createDockerRuntime(),
     },
     plugins: {
-      echo: createEchoAgent,
-      delay: () => createDelayAgent(),
       cursor: () => createCursorAgent(),
     },
   });

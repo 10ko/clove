@@ -10,7 +10,7 @@ npm run dev
 # or: npx tsx src/cli.ts
 
 # From the shell:
-#   start --repo <path|url> --prompt "<text>" [--runtime local|docker] [--agent echo|delay|cursor]
+#   start --repo <path|url> --prompt "<text>" [--runtime local|docker] [--agent cursor]
 #   list
 #   stream <agent-id>
 #   send-input <agent-id> "<input>"
