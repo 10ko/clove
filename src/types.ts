@@ -37,6 +37,8 @@ export interface AgentContext {
   agentId: string;
   /** Optional: set by runtime so plugins can report busy/waiting. */
   agentStateRef?: AgentStateRef;
+  /** Optional: when aborted, plugin should exit stream and clean up (e.g. kill child). */
+  abortSignal?: AbortSignal;
   [key: string]: unknown;
 }
 
@@ -49,6 +51,8 @@ export interface AgentPlugin {
   stream(prompt: string, context: AgentContext): AsyncIterable<StreamEnvelope>;
   /** Handle user input. agentId is provided so plugins can route to the right process. Return a string to append to the stream. */
   handleInput(agentId: AgentId, input: string): Promise<void | string>;
+  /** Cancel the current prompt turn (e.g. send ACP session/cancel). Optional. */
+  cancel?(agentId: AgentId): Promise<void>;
 }
 
 /**
@@ -65,6 +69,8 @@ export interface AgentRuntime {
   stop(agentId: AgentId): Promise<void>;
   streamLogs(agentId: AgentId): AsyncIterable<StreamEnvelope>;
   sendInput(agentId: AgentId, input: string): Promise<void>;
+  /** Optional: cancel current prompt turn (e.g. Ctrl+C). */
+  cancel?(agentId: AgentId): Promise<void>;
   /** Optional: agent state (e.g. busy vs waiting). Used by CLI/API for display. */
   getAgentState?(agentId: AgentId): { agentState?: AgentState } | undefined;
 }

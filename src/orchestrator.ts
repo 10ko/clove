@@ -91,16 +91,22 @@ export class Orchestrator {
   }
 
   async stopAgent(agentId: AgentId): Promise<void> {
+    console.log('[clove] stopAgent: start', agentId);
     const record = this.agents.get(agentId);
     if (!record) {
+      console.log('[clove] stopAgent: agent not found', agentId);
       return;
     }
     const runtime = this.runtimes[record.runtimeKey];
     if (runtime) {
+      console.log('[clove] stopAgent: calling runtime.stop', agentId);
       await runtime.stop(agentId);
+      console.log('[clove] stopAgent: runtime.stop done', agentId);
     }
+    console.log('[clove] stopAgent: removing workspace', agentId);
     await this.workspaceManager.removeWorkspace(agentId);
     this.agents.delete(agentId);
+    console.log('[clove] stopAgent: done', agentId);
   }
 
   getAgentStatus(agentId: AgentId): AgentStatus | undefined {
@@ -150,6 +156,14 @@ export class Orchestrator {
       throw new Error(`Runtime not found: ${record.runtimeKey}`);
     }
     await runtime.sendInput(agentId, input);
+  }
+
+  /** Cancel the current prompt turn (e.g. send ACP session/cancel). No-op if runtime does not support it. */
+  async cancelAgent(agentId: AgentId): Promise<void> {
+    const record = this.agents.get(agentId);
+    if (!record) return;
+    const runtime = this.runtimes[record.runtimeKey];
+    await runtime?.cancel?.(agentId);
   }
 }
 

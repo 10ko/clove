@@ -25,6 +25,8 @@ const CURSOR_INSTALL_HINT =
 interface AcpSession {
   sessionId: string;
   sendPrompt: (text: string) => Promise<void>;
+  /** Cancel current prompt turn (sends session/cancel). */
+  cancel?: () => void;
   /** Push a line into the stream (e.g. "[Follow-up sent.]") for user feedback. */
   pushFeedback?: (line: string) => void;
   /** Push user message into the stream (shown right-aligned in UI). */
@@ -78,6 +80,7 @@ function runCursorStreamAcp(
         env: { ...process.env },
       });
 
+      try {
       const queue: StreamEnvelope[] = [];
       let ended = false;
       let resolveWait: (() => void) | null = null;
@@ -105,6 +108,14 @@ function runCursorStreamAcp(
         }
       };
       child.once('exit', (code) => cleanup(code ?? undefined));
+
+      context.abortSignal?.addEventListener('abort', () => {
+        ended = true;
+        if (resolveWait) {
+          resolveWait();
+          resolveWait = null;
+        }
+      });
 
       let nextId = 1;
       const pending = new Map<
@@ -268,6 +279,9 @@ function runCursorStreamAcp(
         acpSessionByAgent.set(agentId, {
           sessionId,
           sendPrompt,
+          cancel: () => {
+            writeStdin({ jsonrpc: '2.0', method: 'session/cancel', params: { sessionId } });
+          },
           pushFeedback: (line) => push({ type: 'agent', payload: line }),
           pushUserMessage: (payload) => push({ type: 'user', payload }),
         });
@@ -283,6 +297,14 @@ function runCursorStreamAcp(
         while (queue.length > 0) {
           const envelope = queue.shift();
           if (envelope) yield envelope;
+        }
+      }
+      } finally {
+        console.log('[clove] cursor ACP generator: finally (abort or exit), killing child', agentId);
+        try {
+          child?.kill?.('SIGTERM');
+        } catch {
+          // ignore
         }
       }
     },
@@ -399,6 +421,11 @@ export function createCursorAgent(options: CursorAgentOptions = {}): AgentPlugin
         return '\n[Failed to send follow-up: ' + (err instanceof Error ? err.message : String(err)) + ']\n';
       }
       return undefined;
+    },
+
+    async cancel(agentId: AgentId): Promise<void> {
+      const session = acpSessionByAgent.get(agentId);
+      if (session?.cancel) session.cancel();
     },
   };
 }

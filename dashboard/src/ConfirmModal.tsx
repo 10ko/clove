@@ -1,9 +1,10 @@
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  /** Can return a Promise; button shows loading until it resolves. */
+  onConfirm: () => void | Promise<void>;
   title: string;
   message: string;
   confirmLabel?: string;
@@ -22,10 +23,15 @@ export function ConfirmModal({
   cancelLabel = 'Cancel',
   variant = 'default',
 }: Props) {
+  const [loading, setLoading] = useState(false);
+
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      setLoading(false);
+      return;
+    }
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && !loading) onClose();
     };
     document.addEventListener('keydown', handleEscape);
     document.body.style.overflow = 'hidden';
@@ -33,13 +39,19 @@ export function ConfirmModal({
       document.removeEventListener('keydown', handleEscape);
       document.body.style.overflow = '';
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, loading]);
 
   if (!isOpen) return null;
 
-  function handleConfirm() {
-    onConfirm();
-    onClose();
+  async function handleConfirm() {
+    if (loading) return;
+    setLoading(true);
+    try {
+      await Promise.resolve(onConfirm());
+      onClose();
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -67,9 +79,10 @@ export function ConfirmModal({
           <button
             type="button"
             onClick={handleConfirm}
+            disabled={loading}
             style={variant === 'danger' ? confirmBtnDangerStyle : confirmBtnStyle}
           >
-            {confirmLabel}
+            {loading ? '…' : confirmLabel}
           </button>
         </div>
       </div>

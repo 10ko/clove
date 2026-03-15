@@ -66,4 +66,9 @@ export class CloveApi {
   async sendInput(agentId: AgentId, input: string): Promise<void> {
     return this.orchestrator.sendInput(agentId, input);
   }
+
+  /** Cancel the current prompt turn (e.g. like Ctrl+C in Cursor). */
+  async cancelAgent(agentId: AgentId): Promise<void> {
+    return this.orchestrator.cancelAgent(agentId);
+  }
 }

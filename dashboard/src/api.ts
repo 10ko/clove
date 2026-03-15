@@ -78,6 +78,13 @@ export async function stopAgent(agentId: string): Promise<void> {
   if (!res.ok) throw new Error(await res.text());
 }
 
+export async function cancelAgent(agentId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/agents/${encodeURIComponent(agentId)}/cancel`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error(await res.text());
+}
+
 export async function sendInput(agentId: string, input: string): Promise<void> {
   const res = await fetch(`${API_BASE}/agents/${encodeURIComponent(agentId)}/input`, {
     method: 'POST',

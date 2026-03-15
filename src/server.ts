@@ -115,7 +115,9 @@ export function createServer(api: CloveApi): http.Server {
 
       // POST /api/agents/:id/stop
       if (req.method === 'POST' && base === 'api' && sub === 'agents' && id && pathParts[3] === 'stop') {
+        console.log('[clove] POST /api/agents/:id/stop', id);
         await api.stopAgent(id);
+        console.log('[clove] POST /api/agents/:id/stop done', id);
         jsonResponse(res, 200, { ok: true });
         return;
       }
@@ -129,6 +131,13 @@ export function createServer(api: CloveApi): http.Server {
           return;
         }
         await api.sendInput(id, input);
+        jsonResponse(res, 200, { ok: true });
+        return;
+      }
+
+      // POST /api/agents/:id/cancel — cancel current prompt turn (e.g. like Ctrl+C)
+      if (req.method === 'POST' && base === 'api' && sub === 'agents' && id && pathParts[3] === 'cancel') {
+        await api.cancelAgent(id);
         jsonResponse(res, 200, { ok: true });
         return;
       }
@@ -209,7 +218,8 @@ export function runServer(port: number): { server: http.Server; api: CloveApi } 
     console.log('  GET  /api/info             — server info (cwd)');
     console.log('  GET  /api/agents           — list agents');
     console.log('  POST /api/agents/start     — start (body: { repoPath, prompt, agentId? })');
-    console.log('  POST /api/agents/:id/stop  — stop agent');
+    console.log('  POST /api/agents/:id/stop   — stop agent');
+    console.log('  POST /api/agents/:id/cancel — cancel current task (like Ctrl+C)');
     console.log('  POST /api/agents/:id/input — send input (body: { input })');
     console.log('  GET  /api/agents/:id/stream — SSE stream');
   });

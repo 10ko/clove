@@ -55,6 +55,8 @@ interface LocalAgentEntry {
   agent: AgentPlugin;
   queue: StreamQueue;
   taskPromise: Promise<void>;
+  streamIterator: AsyncIterator<StreamEnvelope>;
+  abortController: AbortController;
   agentStateRef?: AgentStateRef;
 }
 
@@ -73,26 +75,33 @@ export function createLocalRuntime(): AgentRuntime {
       }
       const queue = new StreamQueue();
       const agentStateRef: AgentStateRef = { current: 'waiting' };
-      const context = { workspacePath, agentId, agentStateRef };
+      const abortController = new AbortController();
+      const context = { workspacePath, agentId, agentStateRef, abortSignal: abortController.signal };
+      const stream = agent.stream(prompt, context);
+      const streamIterator = stream[Symbol.asyncIterator]();
       const taskPromise = (async () => {
         try {
-          for await (const chunk of agent.stream(prompt, context)) {
-            queue.push(chunk);
+          for (;;) {
+            const result = await streamIterator.next();
+            if (result.done) break;
+            if (result.value) queue.push(result.value);
           }
         } finally {
           queue.close();
         }
       })();
-      entries.set(agentId, { agent, queue, taskPromise, agentStateRef });
+      entries.set(agentId, { agent, queue, taskPromise, streamIterator, abortController, agentStateRef });
     },
 
     async stop(agentId: AgentId): Promise<void> {
       const entry = entries.get(agentId);
-      if (entry) {
-        entries.delete(agentId);
-        entry.queue.close();
-        await entry.taskPromise;
-      }
+      if (!entry) return;
+      console.log('[clove] local runtime stop: start', agentId);
+      entries.delete(agentId);
+      entry.queue.close();
+      entry.abortController.abort();
+      entry.streamIterator.return?.();
+      console.log('[clove] local runtime stop: done', agentId);
     },
 
     async *streamLogs(agentId: AgentId): AsyncIterable<StreamEnvelope> {
@@ -112,6 +121,12 @@ export function createLocalRuntime(): AgentRuntime {
       if (typeof out === 'string' && out) {
         entry.queue.push({ type: 'agent', payload: out });
       }
+    },
+
+    async cancel(agentId: AgentId): Promise<void> {
+      const entry = entries.get(agentId);
+      if (!entry) return;
+      await entry.agent.cancel?.(agentId);
     },
 
     getAgentState(agentId: AgentId): { agentState?: AgentState } | undefined {

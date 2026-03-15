@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sendInput, stopAgent, streamAgentUrl, vscodeUrlForPath } from './api';
+import { cancelAgent, sendInput, stopAgent, streamAgentUrl, vscodeUrlForPath } from './api';
 import type { AgentRecord, StreamEnvelope } from './api';
 import { IconBranch, IconCheck, IconClose, IconCopy, IconVscode } from './Icons';
 import { ConfirmModal } from './ConfirmModal';
@@ -75,6 +75,17 @@ export function AgentDetail({ agentId, agent, onClose, onStop }: Props) {
   }, [segments]);
 
   useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === '.' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        cancelAgent(agentId).catch((err) => alert(err instanceof Error ? err.message : String(err)));
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [agentId]);
+
+  useEffect(() => {
     return () => {
       if (copyFeedbackTimeoutRef.current) clearTimeout(copyFeedbackTimeoutRef.current);
     };
@@ -103,6 +114,14 @@ export function AgentDetail({ agentId, agent, onClose, onStop }: Props) {
     try {
       await stopAgent(agentId);
       onStop?.();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function handleCancelTask() {
+    try {
+      await cancelAgent(agentId);
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
     }
@@ -216,14 +235,20 @@ export function AgentDetail({ agentId, agent, onClose, onStop }: Props) {
                   if (inputValue.trim()) formRef.current?.requestSubmit();
                 }
               }}
-              placeholder="Type to send to agent… (Enter to send, Shift+Enter for new line)"
-              disabled={sending}
+              placeholder={agent?.agentState === 'busy' ? 'Agent is working…' : 'Type to send to agent… (Enter to send, Shift+Enter for new line)'}
+              disabled={sending || agent?.agentState === 'busy'}
               rows={1}
               style={textareaStyle}
             />
-            <button type="submit" disabled={sending || !inputValue.trim()}>
-              {sending ? 'Sending…' : 'Send'}
-            </button>
+            {agent?.agentState === 'busy' ? (
+              <button type="button" onClick={handleCancelTask} style={cancelBtnStyle} title="Cancel current task (Cmd+. or Ctrl+.)">
+                Cancel
+              </button>
+            ) : (
+              <button type="submit" disabled={sending || !inputValue.trim()}>
+                {sending ? 'Sending…' : 'Send'}
+              </button>
+            )}
           </div>
         </form>
 
@@ -503,6 +528,17 @@ const inputRowStyle: React.CSSProperties = {
   display: 'flex',
   gap: '0.5rem',
   alignItems: 'flex-end',
+};
+
+const cancelBtnStyle: React.CSSProperties = {
+  padding: '0.5rem 0.75rem',
+  fontSize: '0.875rem',
+  borderRadius: '0.375rem',
+  border: '1px solid #334155',
+  background: 'rgba(239, 68, 68, 0.2)',
+  color: '#fca5a5',
+  cursor: 'pointer',
+  flexShrink: 0,
 };
 
 const textareaStyle: React.CSSProperties = {
