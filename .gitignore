@@ -13,3 +13,6 @@ dashboard/dist/
 *.zip
 clove-macos-arm64.zip
 dist/clove-macos-arm64
+
+# Docs: kept locally only, not published for now
+docs/

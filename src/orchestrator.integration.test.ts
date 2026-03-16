@@ -1,16 +1,33 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { execSync, spawnSync } from 'node:child_process';
+import { execSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import type { AgentContext, AgentId, StreamEnvelope } from './types.js';
+import type { AgentPlugin } from './types.js';
 import { Orchestrator } from './orchestrator.js';
 import { WorkspaceManager } from './workspaceManager.js';
 import { createLocalRuntime } from './plugins/runtime/local.js';
-import { createCursorAgent } from './plugins/agent/cursor.js';
 
-function isCursorInstalled(): boolean {
-  const r = spawnSync('agent', ['--version'], { stdio: 'pipe', timeout: 5000 });
-  return r.status === 0;
+/** Mock agent: yields deterministic output, no external process. */
+function createMockAgent(): AgentPlugin {
+  return {
+    async run(prompt: string, context: AgentContext): Promise<string> {
+      const parts: string[] = [];
+      for await (const env of this.stream(prompt, context)) {
+        if (env.payload) parts.push(env.payload);
+      }
+      return parts.join('');
+    },
+    async *stream(prompt: string, _context: AgentContext): AsyncIterable<StreamEnvelope> {
+      yield { type: 'log', payload: '[mock] started\n' };
+      yield { type: 'agent', payload: `Mock output for: ${prompt}\n` };
+      yield { type: 'log', payload: '[mock] done\n' };
+    },
+    async handleInput(_agentId: AgentId, _input: string): Promise<void> {
+      // no-op
+    },
+  };
 }
 
 describe('Orchestrator (integration)', () => {
@@ -32,7 +49,7 @@ describe('Orchestrator (integration)', () => {
     orchestrator = new Orchestrator({
       workspaceManager: new WorkspaceManager(),
       runtimes: { local: createLocalRuntime() },
-      plugins: { cursor: () => createCursorAgent() },
+      plugins: { mock: () => createMockAgent() },
     });
   });
 
@@ -43,43 +60,38 @@ describe('Orchestrator (integration)', () => {
     await fs.rm(tmpRepo, { recursive: true, force: true });
   });
 
-  it.skipIf(!isCursorInstalled())(
-    'startAgent creates workspace and runs cursor agent; stream yields output',
-    async () => {
-      const agentId = 'int-test-1';
-      const result = await orchestrator.startAgent(
-        agentId,
-        { type: 'path', path: tmpRepo },
-        'local',
-        'cursor',
-        'list files in this repo'
-      );
+  it('startAgent creates workspace and runs agent; stream yields output', async () => {
+    const agentId = 'int-test-1';
+    const result = await orchestrator.startAgent(
+      agentId,
+      { type: 'path', path: tmpRepo },
+      'local',
+      'mock',
+      'list files in this repo'
+    );
 
-      expect(result.path).toContain(agentId);
-      expect(result.branch).toMatch(/^clove\//);
+    expect(result.path).toContain(agentId);
+    expect(result.branch).toMatch(/^clove\//);
 
-      const chunks: string[] = [];
-      const iterator = orchestrator.streamLogs(agentId);
-      const timeout = Date.now() + 15000;
-      for await (const envelope of iterator) {
-        chunks.push(envelope.payload);
-        if (chunks.join('').length > 50 || Date.now() > timeout) break;
-      }
-      const output = chunks.join('');
-      expect(output.length).toBeGreaterThan(0);
-
-      const list = orchestrator.listAgents();
-      expect(list.some((a) => a.agentId === agentId)).toBe(true);
+    const chunks: string[] = [];
+    for await (const envelope of orchestrator.streamLogs(agentId)) {
+      chunks.push(envelope.payload);
     }
-  );
+    const output = chunks.join('');
+    expect(output).toContain('Mock output for:');
+    expect(output.length).toBeGreaterThan(0);
 
-  it.skipIf(!isCursorInstalled())('sendInput and stopAgent work', async () => {
+    const list = orchestrator.listAgents();
+    expect(list.some((a) => a.agentId === agentId)).toBe(true);
+  });
+
+  it('sendInput and stopAgent work', async () => {
     const agentId = 'int-test-2';
     await orchestrator.startAgent(
       agentId,
       { type: 'path', path: tmpRepo },
       'local',
-      'cursor',
+      'mock',
       'say hello'
     );
 

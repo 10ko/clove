@@ -56,7 +56,7 @@ export interface AgentPlugin {
 }
 
 /**
- * Runtime plugin: where the agent runs (local process, Docker, cloud).
+ * Runtime plugin: where the agent runs (local process, container, cloud, etc.).
  * Receives workspace path (from workspace manager) and agent plugin; manages process and I/O.
  */
 export interface AgentRuntime {

@@ -10,7 +10,6 @@ import { CloveApi } from './api.js';
 import { Orchestrator } from './orchestrator.js';
 import { WorkspaceManager } from './workspaceManager.js';
 import { createLocalRuntime } from './plugins/runtime/local.js';
-import { createDockerRuntime } from './plugins/runtime/docker.js';
 import { createCursorAgent } from './plugins/agent/cursor.js';
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
@@ -207,7 +206,6 @@ export function runServer(port: number): { server: http.Server; api: CloveApi } 
     workspaceManager: new WorkspaceManager(),
     runtimes: {
       local: createLocalRuntime(),
-      docker: createDockerRuntime(),
     },
     plugins: {
       cursor: () => createCursorAgent(),

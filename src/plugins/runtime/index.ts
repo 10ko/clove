@@ -1,7 +1,5 @@
 /**
- * Runtime plugins: Local, Docker, etc.
+ * Runtime plugins: Local (and others can be added via the same interface).
  */
 
 export { createLocalRuntime } from './local.js';
-export { createDockerRuntime } from './docker.js';
-export type { DockerRuntimeOptions } from './docker.js';

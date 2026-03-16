@@ -10,7 +10,6 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createCursorAgent } from './plugins/agent/cursor.js';
 import { createLocalRuntime } from './plugins/runtime/local.js';
-import { createDockerRuntime } from './plugins/runtime/docker.js';
 import { WorkspaceManager } from './workspaceManager.js';
 import { Orchestrator } from './orchestrator.js';
 import { CloveApi } from './api.js';
@@ -61,7 +60,7 @@ EXAMPLES
 `.trim();
 
 const SHELL_HELP = `
-  start --repo <path|url> [--agent-id <id>] [--branch <name>] [--prompt "<text>"] [--runtime local|docker] [--agent cursor]
+  start --repo <path> [--agent-id <id>] [--branch <name>] [--prompt "<text>"] [--runtime local] [--agent cursor]
   list                                    List running agents
   stream <agent-id>                       Stream agent output (Ctrl+C to exit stream)
   send-input <agent-id> "<input>"         Send input to agent
@@ -282,7 +281,6 @@ function createApi(): CloveApi {
     workspaceManager: new WorkspaceManager(),
     runtimes: {
       local: createLocalRuntime(),
-      docker: createDockerRuntime(),
     },
     plugins: {
       cursor: () => createCursorAgent(),
@@ -336,10 +334,6 @@ async function runCommand(
       return false;
     }
     const sourceRepo = parseSourceRepo(repo);
-    if (runtimeKey === 'docker' && sourceRepo.type !== 'url') {
-      console.error('Docker runtime requires a repo URL (e.g. https://github.com/org/repo)');
-      return false;
-    }
     const result = await api.startAgent({
       agentId,
       sourceRepo,

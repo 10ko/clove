@@ -24,5 +24,3 @@ export { createServer, runServer } from './server.js';
 export { createCursorAgent } from './plugins/agent/cursor.js';
 export type { CursorAgentOptions } from './plugins/agent/cursor.js';
 export { createLocalRuntime } from './plugins/runtime/local.js';
-export { createDockerRuntime } from './plugins/runtime/docker.js';
-export type { DockerRuntimeOptions } from './plugins/runtime/docker.js';
