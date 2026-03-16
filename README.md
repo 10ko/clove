@@ -45,8 +45,8 @@ This produces `dist/clove-macos-arm64` and `dist/dashboard/dist/`.
 
 **Distribute to other Macs:**
 
-- **Homebrew (no signing):** Ship source via a [Homebrew tap](docs/homebrew.md); users run `brew tap you/clove && brew install clove`. No Apple Developer account needed.
-- **Standalone binary:** Sign and notarize with Apple, then share the zip. See **[docs/distribute-macos.md](docs/distribute-macos.md)**. Requires Apple Developer account.
+- **Homebrew (no signing):** Ship the binary via a Homebrew tap; users run `brew tap you/clove && brew install clove`. No Apple Developer account needed.
+- **Standalone binary:** Sign and notarize with Apple, then share the zip. Requires Apple Developer account.
 
 Share `dist/clove-macos-arm64.zip` (if you used sign/notarize). Recipients unzip, then run:
 
@@ -62,9 +62,9 @@ Run `dashboard` from the interactive shell; the app opens in your browser and th
 
 ## Commit and PR (worktrees)
 
-With the **local** runtime, each agent uses a git worktree on a branch like `clove/agent-123`. You commit and open a PR yourself: go to the agent’s workspace (e.g. via the dashboard “VS Code” button), commit, push the branch, then open a PR. **Push before stopping the agent** — stopping removes the worktree and deletes the local branch. See [docs/workflow.md](docs/workflow.md).
+With the **local** runtime, each agent uses a git worktree on a branch like `clove/agent-123`. You commit and open a PR yourself: go to the agent’s workspace (e.g. via the dashboard “VS Code” button), commit, push the branch, then open a PR. **Push before stopping the agent** — stopping removes the worktree and deletes the local branch.
 
 ## What’s next
 
-- Config file, error handling, release prep (see `docs/plans/implementation.md`).
-- The runtime/agent plugin system supports adding more runtimes (e.g. Docker) and agents; see [docs/plugins.md](docs/plugins.md).
+- Config file, error handling, release prep.
+- The runtime/agent plugin system supports adding more runtimes and agents (implement the interfaces in `src/types.ts` and register in `src/cli.ts` and `src/server.ts`).

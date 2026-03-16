@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Sign and notarize the macOS binary for distribution.
 # Prerequisites: Apple Developer account, Developer ID Application cert, app-specific password.
-# See docs/distribute-macos.md.
+# Sign and notarize for distribution outside the App Store.
 
 set -e
 
