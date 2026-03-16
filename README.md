@@ -2,15 +2,20 @@
 
 Orchestrate coding agents (local or Docker) with a CLI and dashboard.
 
+**Requires [Bun](https://bun.sh)** (`curl -fsSL https://bun.sh/install | bash`).
+
 ## Commands
 
 ```bash
+# Install dependencies
+bun install
+
 # Interactive shell (recommended)
-npm run dev
-# or: npx tsx src/cli.ts
+bun run dev
+# or: bun run src/cli.ts
 
 # From the shell:
-#   start --repo <path|url> --prompt "<text>" [--runtime local|docker] [--agent cursor]
+#   start --repo <path|url> [--prompt "<text>"] [--runtime local|docker] [--agent cursor]
 #   list
 #   stream <agent-id>
 #   send-input <agent-id> "<input>"
@@ -22,10 +27,26 @@ npm run dev
 
 ```bash
 # One-off (no shell)
-npm run dev -- serve --port 3000
-npm run dev -- dashboard
-npm run dev -- list
-npm run dev -- start --repo . --prompt "hello"
+bun run dev -- serve --port 3000
+bun run dev -- dashboard
+bun run dev -- list
+bun run dev -- start --repo . --prompt "hello"
+```
+
+## Binary (macOS ARM)
+
+To build a standalone executable and bundle the dashboard for distribution:
+
+```bash
+bun run build:binary
+```
+
+This produces `dist/clove-macos-arm64` and `dist/dashboard/dist/`. To distribute, zip the contents of `dist/` (the binary and the `dashboard/` folder must stay next to each other). On another Mac (Apple Silicon), run:
+
+```bash
+./clove-macos-arm64 serve    # API + dashboard at http://localhost:3000
+./clove-macos-arm64 dashboard
+./clove-macos-arm64 list
 ```
 
 ## Dashboard

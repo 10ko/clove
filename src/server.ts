@@ -14,7 +14,13 @@ import { createDockerRuntime } from './plugins/runtime/docker.js';
 import { createCursorAgent } from './plugins/agent/cursor.js';
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
-const DASHBOARD_DIR = path.resolve(serverDir, '../../dashboard/dist');
+// When running as compiled binary, dashboard lives next to the executable
+const execDir = path.dirname(process.execPath);
+const possibleDashboardDirs = [
+  path.resolve(serverDir, '../../dashboard/dist'),
+  path.join(execDir, 'dashboard', 'dist'),
+];
+const DASHBOARD_DIR = possibleDashboardDirs.find((d) => fs.existsSync(d)) ?? possibleDashboardDirs[0];
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',

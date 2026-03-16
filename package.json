@@ -9,26 +9,21 @@
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsx src/cli.ts",
-    "start": "node bin/clove.js",
-    "build:binary": "npm run build && npm run dashboard:build && pkg . --targets node18-macos-arm64 --output dist/clove-macos-arm64 --no-bytecode",
+    "dev": "bun run src/cli.ts",
+    "start": "bun run bin/clove.js",
+    "build:binary": "bun run build && bun run dashboard:build && bun build src/cli.ts --compile --outfile dist/clove-macos-arm64 && mkdir -p dist/dashboard/dist && cp -r dashboard/dist/. dist/dashboard/dist/",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\"",
     "test": "vitest run",
     "test:watch": "vitest",
-    "dashboard:dev": "npm run dev --prefix dashboard",
-    "dashboard:build": "npm run build --prefix dashboard",
-    "dashboard:preview": "npm run preview --prefix dashboard"
-  },
-  "pkg": {
-    "scripts": ["bin/clove.js", "dist/**/*.js"],
-    "assets": ["dashboard/dist/**"],
-    "targets": ["node18-macos-arm64"]
+    "dashboard:dev": "cd dashboard && bun run dev",
+    "dashboard:build": "cd dashboard && bun run build",
+    "dashboard:preview": "cd dashboard && bun run preview"
   },
   "engines": {
-    "node": ">=18"
+    "bun": ">=1.0"
   },
   "keywords": [
     "agents",
@@ -38,19 +33,17 @@
   ],
   "license": "MIT",
   "devDependencies": {
-    "@yao-pkg/pkg": "^6.0.0",
     "@eslint/js": "^9.15.0",
+    "@types/bun": "latest",
     "@types/node": "^22.10.0",
     "eslint": "^9.15.0",
     "eslint-config-prettier": "^9.1.0",
     "prettier": "^3.3.3",
-    "tsx": "^4.19.2",
     "typescript": "^5.6.3",
     "typescript-eslint": "^8.15.0",
     "vitest": "^2.1.4"
   },
   "dependencies": {
-    "node-pty": "^1.1.0",
     "unique-names-generator": "^4.7.1"
   }
 }

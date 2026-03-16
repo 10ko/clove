@@ -103,6 +103,11 @@ function tokenize(line: string): string[] {
   return tokens;
 }
 
+function isCompiledBinary(): boolean {
+  const name = path.basename(process.execPath);
+  return name.startsWith('clove');
+}
+
 function runDashboard(options?: {
   exitOnClose?: boolean;
   dashboardChildRef?: { current: ChildProcess | null };
@@ -110,25 +115,10 @@ function runDashboard(options?: {
   const exitOnClose = options?.exitOnClose ?? false;
   const dashboardChildRef = options?.dashboardChildRef;
   const cliDir = path.dirname(fileURLToPath(import.meta.url));
-  const dashboardDir = path.join(cliDir, '..', 'dashboard');
-  if (!fs.existsSync(dashboardDir)) {
-    console.error('clove: dashboard not found at', dashboardDir);
-    if (exitOnClose) process.exit(1);
-    return Promise.resolve();
-  }
-  const packageJson = path.join(dashboardDir, 'package.json');
-  if (!fs.existsSync(packageJson)) {
-    console.error('clove: dashboard/package.json not found. Run npm install in the project first.');
-    if (exitOnClose) process.exit(1);
-    return Promise.resolve();
-  }
-
-  const viteBin = path.join(dashboardDir, 'node_modules', 'vite', 'bin', 'vite.js');
-  if (!fs.existsSync(viteBin)) {
-    console.error('clove: dashboard/node_modules/vite not found. Run: cd dashboard && npm install');
-    if (exitOnClose) process.exit(1);
-    return Promise.resolve();
-  }
+  const execDir = path.dirname(process.execPath);
+  const dashboardDir = isCompiledBinary()
+    ? path.join(execDir, 'dashboard')
+    : path.join(cliDir, '..', 'dashboard');
 
   let serverToClose: http.Server | null = null;
   const { server } = runServer(3000);
@@ -139,6 +129,65 @@ function runDashboard(options?: {
       serverToClose = null;
     }
   });
+
+  const openBrowser = (url: string): void => {
+    const cmd = process.platform === 'win32' ? 'start' : process.platform === 'darwin' ? 'open' : 'xdg-open';
+    spawn(cmd, [url], { stdio: 'ignore', shell: true }).unref();
+  };
+
+  // Compiled binary: server serves dashboard from dashboard/dist; just open browser
+  if (isCompiledBinary()) {
+    const dashboardUrl = 'http://localhost:3000';
+    const waitForServer = (url: string, timeoutMs: number): Promise<void> =>
+      new Promise((resolve) => {
+        const start = Date.now();
+        const tryFetch = (): void => {
+          const req = http.get(url, () => resolve());
+          req.on('error', () => {
+            if (Date.now() - start < timeoutMs) setTimeout(tryFetch, 200);
+            else resolve();
+          });
+          req.end();
+        };
+        tryFetch();
+      });
+    console.log('Dashboard at http://localhost:3000\n');
+    return waitForServer(dashboardUrl, 5000).then(() => {
+      openBrowser(dashboardUrl);
+      console.log('Dashboard opened in browser. You can keep using the shell.\n');
+      if (exitOnClose) {
+        process.on('SIGINT', () => {
+          if (serverToClose) serverToClose.close();
+          process.exit(0);
+        });
+        process.on('SIGTERM', () => {
+          if (serverToClose) serverToClose.close();
+          process.exit(0);
+        });
+        return new Promise<void>(() => {}); // never resolve — keep process alive
+      }
+    });
+  }
+
+  // From source: need dashboard dir and Vite
+  if (!fs.existsSync(dashboardDir)) {
+    console.error('clove: dashboard not found at', dashboardDir);
+    if (exitOnClose) process.exit(1);
+    return Promise.resolve();
+  }
+  const packageJson = path.join(dashboardDir, 'package.json');
+  if (!fs.existsSync(packageJson)) {
+    console.error('clove: dashboard/package.json not found. Run bun install in the project first.');
+    if (exitOnClose) process.exit(1);
+    return Promise.resolve();
+  }
+
+  const viteBin = path.join(dashboardDir, 'node_modules', 'vite', 'bin', 'vite.js');
+  if (!fs.existsSync(viteBin)) {
+    console.error('clove: dashboard/node_modules/vite not found. Run: cd dashboard && bun install');
+    if (exitOnClose) process.exit(1);
+    return Promise.resolve();
+  }
 
   console.log('API at http://localhost:3000');
   console.log('Dashboard at http://localhost:5173\n');
@@ -152,18 +201,11 @@ function runDashboard(options?: {
 
   const dashboardUrl = 'http://localhost:5173';
 
-  const openBrowser = (url: string): void => {
-    const cmd = process.platform === 'win32' ? 'start' : process.platform === 'darwin' ? 'open' : 'xdg-open';
-    spawn(cmd, [url], { stdio: 'ignore', shell: true }).unref();
-  };
-
   const waitForServer = (url: string, timeoutMs: number): Promise<void> =>
     new Promise((resolve) => {
       const start = Date.now();
       const tryFetch = (): void => {
-        const req = http.get(url, () => {
-          resolve();
-        });
+        const req = http.get(url, () => resolve());
         req.on('error', () => {
           if (Date.now() - start < timeoutMs) setTimeout(tryFetch, 200);
           else resolve();
@@ -225,7 +267,6 @@ function runDashboard(options?: {
 
     if (!exitOnClose) {
       waitForServer(dashboardUrl, 10000).then(() => {
-        // Give Vite time to compile before opening the browser
         setTimeout(() => {
           openBrowser(dashboardUrl);
           console.log('Dashboard opened in browser. You can keep using the shell.\n');
