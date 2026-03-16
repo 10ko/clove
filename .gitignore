@@ -8,3 +8,8 @@ coverage/
 .idea/
 .vscode/
 dashboard/dist/
+
+# Build and release artifacts
+*.zip
+clove-macos-arm64.zip
+dist/clove-macos-arm64

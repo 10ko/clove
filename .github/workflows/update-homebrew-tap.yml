@@ -1,0 +1,55 @@
+# On release, update the Homebrew tap with the binary zip URL and sha256.
+# Requires: release asset named clove-macos-arm64.zip (upload when creating the release).
+# Requires repo secret: HOMEBREW_TAP_TOKEN (PAT with write access to homebrew-clove).
+
+name: Update Homebrew tap
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-tap:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set version and binary zip URL
+        id: release
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "url=https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/clove-macos-arm64.zip" >> $GITHUB_OUTPUT
+
+      - name: Download binary zip and compute SHA256
+        id: sha
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl -sSL -o clove-macos-arm64.zip "${{ steps.release.outputs.url }}"
+          SHA256=$(sha256sum clove-macos-arm64.zip | awk '{print $1}')
+          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+
+      - name: Checkout Homebrew tap
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/homebrew-clove
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update formula
+        run: |
+          cd homebrew-tap
+          sed -i "s|url \".*\"|url \"${{ steps.release.outputs.url }}\"|" Formula/clove.rb
+          sed -i "s|sha256 \".*\"|sha256 \"${{ steps.sha.outputs.sha256 }}\"|" Formula/clove.rb
+
+      - name: Commit and push
+        run: |
+          cd homebrew-tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/clove.rb
+          if git diff --staged --quiet; then
+            echo "No changes"
+          else
+            git commit -m "Clove ${{ steps.release.outputs.version }}"
+            git push
+          fi

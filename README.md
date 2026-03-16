@@ -41,7 +41,14 @@ To build a standalone executable and bundle the dashboard for distribution:
 bun run build:binary
 ```
 
-This produces `dist/clove-macos-arm64` and `dist/dashboard/dist/`. To distribute, zip the contents of `dist/` (the binary and the `dashboard/` folder must stay next to each other). On another Mac (Apple Silicon), run:
+This produces `dist/clove-macos-arm64` and `dist/dashboard/dist/`.
+
+**Distribute to other Macs:**
+
+- **Homebrew (no signing):** Ship source via a [Homebrew tap](docs/homebrew.md); users run `brew tap you/clove && brew install clove`. No Apple Developer account needed.
+- **Standalone binary:** Sign and notarize with Apple, then share the zip. See **[docs/distribute-macos.md](docs/distribute-macos.md)**. Requires Apple Developer account.
+
+Share `dist/clove-macos-arm64.zip` (if you used sign/notarize). Recipients unzip, then run:
 
 ```bash
 ./clove-macos-arm64 serve    # API + dashboard at http://localhost:3000
