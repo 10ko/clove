@@ -2,7 +2,33 @@
 
 Orchestrate coding agents with a CLI and dashboard.
 
-**Requires [Bun](https://bun.sh)** (`curl -fsSL https://bun.sh/install | bash`).
+## Prerequisites
+
+- **[Bun](https://bun.sh)** — `curl -fsSL https://bun.sh/install | bash`
+- **Cursor CLI** — for the default agent: `curl https://cursor.com/install -fsS | bash` (then `agent --version` to confirm)
+- **Git** — a repo with at least one commit to run agents against
+
+Binary (macOS ARM): no Bun needed; download the release zip or use Homebrew (see below).
+
+## Quick start
+
+```bash
+git clone https://github.com/10ko/clove.git && cd clove
+bun install
+bun run dev
+```
+
+In the shell:
+
+```
+start --repo /path/to/your/repo --prompt "List the main files in this project"
+list
+stream <agent-id>
+```
+
+Or run the API + dashboard: `bun run dev -- serve --port 3000` then open http://localhost:3000.
+
+**macOS ARM (no Bun):** Download the binary from [Releases](https://github.com/10ko/clove/releases) or `brew tap 10ko/clove && brew install clove`, then run `clove` or `clove serve`.
 
 ## Commands
 

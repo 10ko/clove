@@ -19,13 +19,15 @@ function createMockAgent(): AgentPlugin {
       }
       return parts.join('');
     },
-    async *stream(prompt: string, _context: AgentContext): AsyncIterable<StreamEnvelope> {
+    async *stream(prompt: string, context: AgentContext): AsyncIterable<StreamEnvelope> {
+      void context;
       yield { type: 'log', payload: '[mock] started\n' };
       yield { type: 'agent', payload: `Mock output for: ${prompt}\n` };
       yield { type: 'log', payload: '[mock] done\n' };
     },
-    async handleInput(_agentId: AgentId, _input: string): Promise<void> {
-      // no-op
+    async handleInput(agentId: AgentId, input: string): Promise<void> {
+      void agentId;
+      void input;
     },
   };
 }

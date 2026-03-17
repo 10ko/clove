@@ -161,7 +161,11 @@ function runCursorStreamAcp(
               const waiter = pending.get(msg.id);
               if (waiter) {
                 pending.delete(msg.id);
-                msg.error ? waiter.reject(new Error(msg.error.message ?? String(msg.error))) : waiter.resolve(msg.result);
+                if (msg.error) {
+                  waiter.reject(new Error(msg.error.message ?? String(msg.error)));
+                } else {
+                  waiter.resolve(msg.result);
+                }
               }
               continue;
             }
