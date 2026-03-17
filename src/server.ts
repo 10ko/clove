@@ -199,7 +199,10 @@ export function createServer(api: CloveApi): http.Server {
   });
 }
 
-export function runServer(port: number): { server: http.Server; api: CloveApi } {
+export function runServer(
+  port: number,
+  onListening?: (actualPort: number) => void
+): { server: http.Server; api: CloveApi } {
   const orchestrator = new Orchestrator({
     workspaceManager: new WorkspaceManager(),
     runtimes: {
@@ -212,9 +215,14 @@ export function runServer(port: number): { server: http.Server; api: CloveApi } 
   const api = new CloveApi(orchestrator);
   const server = createServer(api);
   server.listen(port, () => {
-    console.log(`Clove server at http://localhost:${port}`);
+    const address = server.address();
+    const actualPort =
+      typeof address === 'object' && address && 'port' in address
+        ? (address as import('node:net').AddressInfo).port
+        : port;
+    console.log(`Clove server at http://localhost:${actualPort}`);
     if (fs.existsSync(DASHBOARD_DIR)) {
-      console.log('  Dashboard: http://localhost:' + port);
+      console.log('  Dashboard: http://localhost:' + actualPort);
     }
     console.log('  API:');
     console.log('  GET  /api/info             — server info (cwd)');
@@ -224,6 +232,7 @@ export function runServer(port: number): { server: http.Server; api: CloveApi } 
     console.log('  POST /api/agents/:id/cancel — cancel current task (like Ctrl+C)');
     console.log('  POST /api/agents/:id/input — send input (body: { input })');
     console.log('  GET  /api/agents/:id/stream — SSE stream');
+    onListening?.(actualPort);
   });
   return { server, api };
 }

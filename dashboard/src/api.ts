@@ -1,4 +1,7 @@
-const API_BASE = '/api';
+const API_BASE =
+  (import.meta as any).env?.VITE_CLOVE_API_URL && typeof (import.meta as any).env.VITE_CLOVE_API_URL === 'string'
+    ? ((import.meta as any).env.VITE_CLOVE_API_URL as string)
+    : '/api';
 
 export interface AgentRecord {
   agentId: string;

@@ -13,7 +13,7 @@ import { createLocalRuntime } from './plugins/runtime/local.js';
 import { WorkspaceManager } from './workspaceManager.js';
 import { Orchestrator } from './orchestrator.js';
 import { CloveApi } from './api.js';
-import { createServer, runServer } from './server.js';
+import { runServer } from './server.js';
 import { uniqueNamesGenerator, adjectives, animals } from 'unique-names-generator';
 
 function generateMemorableId(): string {
@@ -107,7 +107,37 @@ function isCompiledBinary(): boolean {
   return name.startsWith('clove');
 }
 
-function runDashboard(options?: {
+let sharedServer: http.Server | null = null;
+let sharedApiPort: number | null = null;
+
+async function ensureApiServer(preferredPort = 3000): Promise<number> {
+  if (sharedServer && sharedApiPort != null) return sharedApiPort;
+
+  return await new Promise<number>((resolve, reject) => {
+    let usedFallback = false;
+
+    const startOnPort = (port: number): void => {
+      const { server } = runServer(port, (actualPort) => {
+        sharedServer = server;
+        sharedApiPort = actualPort;
+        resolve(actualPort);
+      });
+      server.once('error', (err: NodeJS.ErrnoException) => {
+        if (err.code === 'EADDRINUSE' && !usedFallback) {
+          usedFallback = true;
+          // Retry on an OS-assigned free port.
+          startOnPort(0);
+        } else {
+          reject(err);
+        }
+      });
+    };
+
+    startOnPort(preferredPort);
+  });
+}
+
+async function runDashboard(options?: {
   exitOnClose?: boolean;
   dashboardChildRef?: { current: ChildProcess | null };
 }): Promise<void> {
@@ -119,15 +149,7 @@ function runDashboard(options?: {
     ? path.join(execDir, 'dashboard')
     : path.join(cliDir, '..', 'dashboard');
 
-  let serverToClose: http.Server | null = null;
-  const { server } = runServer(3000);
-  serverToClose = server;
-  server.once('error', (err: NodeJS.ErrnoException) => {
-    if (err.code === 'EADDRINUSE') {
-      console.log('Port 3000 in use — using existing API server.');
-      serverToClose = null;
-    }
-  });
+  const apiPort = await ensureApiServer(3000);
 
   const openBrowser = (url: string): void => {
     const cmd = process.platform === 'win32' ? 'start' : process.platform === 'darwin' ? 'open' : 'xdg-open';
@@ -136,7 +158,7 @@ function runDashboard(options?: {
 
   // Compiled binary: server serves dashboard from dashboard/dist; just open browser
   if (isCompiledBinary()) {
-    const dashboardUrl = 'http://localhost:3000';
+    const dashboardUrl = `http://localhost:${apiPort}`;
     const waitForServer = (url: string, timeoutMs: number): Promise<void> =>
       new Promise((resolve) => {
         const start = Date.now();
@@ -150,17 +172,15 @@ function runDashboard(options?: {
         };
         tryFetch();
       });
-    console.log('Dashboard at http://localhost:3000\n');
+    console.log(`Dashboard at ${dashboardUrl}\n`);
     return waitForServer(dashboardUrl, 5000).then(() => {
       openBrowser(dashboardUrl);
       console.log('Dashboard opened in browser. You can keep using the shell.\n');
       if (exitOnClose) {
         process.on('SIGINT', () => {
-          if (serverToClose) serverToClose.close();
           process.exit(0);
         });
         process.on('SIGTERM', () => {
-          if (serverToClose) serverToClose.close();
           process.exit(0);
         });
         return new Promise<void>(() => {}); // never resolve — keep process alive
@@ -188,11 +208,14 @@ function runDashboard(options?: {
     return Promise.resolve();
   }
 
-  console.log('API at http://localhost:3000');
+  console.log(`API at http://localhost:${apiPort}`);
   console.log('Dashboard at http://localhost:5173\n');
 
   const dashboardBin = path.join(dashboardDir, 'node_modules', '.bin');
-  const env = { ...process.env };
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    VITE_CLOVE_API_URL: `http://localhost:${apiPort}`,
+  };
   delete env.NODE_PATH;
   if (process.env.PATH) {
     env.PATH = dashboardBin + path.delimiter + process.env.PATH;
@@ -224,11 +247,6 @@ function runDashboard(options?: {
 
     const cleanup = (): void => {
       try {
-        if (serverToClose) serverToClose.close();
-      } catch {
-        // ignore
-      }
-      try {
         child.kill();
       } catch {
         // ignore
@@ -238,7 +256,6 @@ function runDashboard(options?: {
     const onExit = (code: number | null): void => {
       process.removeListener('SIGINT', onSignal);
       process.removeListener('SIGTERM', onSignal);
-      if (serverToClose) serverToClose.close();
       if (exitOnClose) process.exit(code ?? 0);
       else resolve();
     };
@@ -259,7 +276,6 @@ function runDashboard(options?: {
     });
     child.on('error', (err) => {
       console.error('clove:', err.message);
-      if (serverToClose) serverToClose.close();
       if (exitOnClose) process.exit(1);
       else reject(err);
     });
@@ -450,7 +466,7 @@ async function runCommand(
   return false;
 }
 
-function runInteractiveShell(): void {
+async function runInteractiveShell(): Promise<void> {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   const api = createApi();
   const streamInterruptRef: StreamInterruptRef = { current: null };
@@ -485,16 +501,8 @@ function runInteractiveShell(): void {
     }
   });
 
-  const server = createServer(api);
-  server.listen(3000, () => {
-    console.log('API at http://localhost:3000');
-  });
-  server.once('error', (err: NodeJS.ErrnoException) => {
-    if (err.code === 'EADDRINUSE') {
-      console.log('Port 3000 in use — API may already be running.');
-    }
-  });
-
+  const apiPort = await ensureApiServer(3000);
+  console.log(`API at http://localhost:${apiPort}`);
   console.log('clove – interactive shell. Type "help" for commands, "exit" to quit.\n');
 
   const loop = (): void => {
@@ -543,14 +551,20 @@ async function main(): Promise<void> {
     first === 'i' ||
     first === 'repl'
   ) {
-    runInteractiveShell();
+    await runInteractiveShell();
     return;
   }
 
   // serve: start HTTP server (single-command only)
   if (first === 'serve') {
-    const port = parseInt(getArg(rawArgs.slice(1), '--port') ?? '3000', 10);
-    if (Number.isNaN(port) || port < 1 || port > 65535) {
+    const portArg = getArg(rawArgs.slice(1), '--port');
+    if (!portArg) {
+      // No port specified: let OS choose a free port.
+      runServer(0);
+      return;
+    }
+    const port = Number(portArg);
+    if (!Number.isFinite(port) || port <= 0 || port > 65535) {
       console.error('clove: invalid --port');
       process.exit(1);
     }

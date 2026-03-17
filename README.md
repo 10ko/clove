@@ -26,7 +26,7 @@ list
 stream <agent-id>
 ```
 
-Or run the API + dashboard: `bun run dev -- serve --port 3000` then open http://localhost:3000.
+Or run the API + dashboard: `bun run dev -- serve` (it will pick a free port and print the URL).
 
 **macOS ARM (no Bun):** Download the binary from [Releases](https://github.com/10ko/clove/releases) or `brew tap 10ko/clove && brew install clove`, then run `clove` or `clove serve`.
 
@@ -53,7 +53,7 @@ bun run dev
 
 ```bash
 # One-off (no shell)
-bun run dev -- serve --port 3000
+bun run dev -- serve        # picks a free port
 bun run dev -- dashboard
 bun run dev -- list
 bun run dev -- start --repo . --prompt "hello"
