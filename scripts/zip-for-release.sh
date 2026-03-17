@@ -14,8 +14,8 @@ if [[ ! -f "$DIST/clove-macos-arm64" ]]; then
 fi
 
 cd "$DIST"
-zip -q -r "../$ZIP_NAME" clove-macos-arm64 dashboard
+zip -q -r "$ZIP_NAME" clove-macos-arm64 dashboard
 cd - >/dev/null
 
-echo "Created $ZIP_NAME"
+echo "Created $DIST/$ZIP_NAME"
 echo "Upload it to your GitHub Release, then the Homebrew tap will be updated automatically (or run the update-homebrew-tap workflow)."

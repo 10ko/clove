@@ -61,20 +61,20 @@ bun run dev -- start --repo . --prompt "hello"
 
 ## Binary (macOS ARM)
 
-To build a standalone executable and bundle the dashboard for distribution:
+To build a standalone executable and create the release zip:
 
 ```bash
 bun run build:binary
 ```
 
-This produces `dist/clove-macos-arm64` and `dist/dashboard/dist/`.
+This produces `dist/clove-macos-arm64`, `dist/dashboard/dist/`, and **`dist/clove-macos-arm64.zip`**. Upload that zip to a GitHub Release; the update-homebrew-tap workflow will update the formula.
 
 **Distribute to other Macs:**
 
-- **Homebrew (no signing):** Ship the binary via a Homebrew tap; users run `brew tap you/clove && brew install clove`. No Apple Developer account needed.
-- **Standalone binary:** Sign and notarize with Apple, then share the zip. Requires Apple Developer account.
+- **Homebrew:** Users run `brew tap 10ko/clove && brew install clove`. The formula fetches the zip from the latest release.
+- **Standalone binary:** Optionally sign and notarize the binary before running `zip-for-release.sh`, then share the zip. Requires Apple Developer account for notarization.
 
-Share `dist/clove-macos-arm64.zip` (if you used sign/notarize). Recipients unzip, then run:
+Recipients unzip and run:
 
 ```bash
 ./clove-macos-arm64 serve    # API + dashboard at http://localhost:3000
