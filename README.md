@@ -92,5 +92,8 @@ With the **local** runtime, each agent uses a git worktree on a branch like `clo
 
 ## What’s next
 
-- Config file, error handling, release prep.
-- The runtime/agent plugin system supports adding more runtimes and agents (implement the interfaces in `src/types.ts` and register in `src/cli.ts` and `src/server.ts`).
+- **Daemon** — Run Clove as a background daemon; CLI and dashboard connect to it. First run could auto-start the daemon so there’s a single entry point.
+- **Persistence & recovery** — Persist agent list and workspace metadata so after a restart you can see what was running and recover or clean up workspaces.
+- **Config file** — Defaults for runtime, agent, paths.
+
+The plugin system is in place: add runtimes and agents by implementing the interfaces in `src/types.ts` and registering them in `src/cli.ts` and `src/server.ts`.

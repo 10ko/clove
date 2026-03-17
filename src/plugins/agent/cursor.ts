@@ -304,7 +304,6 @@ function runCursorStreamAcp(
         }
       }
       } finally {
-        console.log('[clove] cursor ACP generator: finally (abort or exit), killing child', agentId);
         try {
           child?.kill?.('SIGTERM');
         } catch {

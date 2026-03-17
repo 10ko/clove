@@ -120,9 +120,7 @@ export function createServer(api: CloveApi): http.Server {
 
       // POST /api/agents/:id/stop
       if (req.method === 'POST' && base === 'api' && sub === 'agents' && id && pathParts[3] === 'stop') {
-        console.log('[clove] POST /api/agents/:id/stop', id);
         await api.stopAgent(id);
-        console.log('[clove] POST /api/agents/:id/stop done', id);
         jsonResponse(res, 200, { ok: true });
         return;
       }

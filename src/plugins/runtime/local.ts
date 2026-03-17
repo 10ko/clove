@@ -96,12 +96,10 @@ export function createLocalRuntime(): AgentRuntime {
     async stop(agentId: AgentId): Promise<void> {
       const entry = entries.get(agentId);
       if (!entry) return;
-      console.log('[clove] local runtime stop: start', agentId);
       entries.delete(agentId);
       entry.queue.close();
       entry.abortController.abort();
       entry.streamIterator.return?.();
-      console.log('[clove] local runtime stop: done', agentId);
     },
 
     async *streamLogs(agentId: AgentId): AsyncIterable<StreamEnvelope> {
