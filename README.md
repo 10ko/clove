@@ -15,7 +15,13 @@ Binary (macOS ARM): no Bun needed; download the release zip or use Homebrew (see
 ```bash
 git clone https://github.com/10ko/clove.git && cd clove
 bun install
-bun run dev
+bun run dev          # starts daemon in foreground (shows logs)
+```
+
+Then in a second terminal:
+
+```bash
+bun run dev:shell    # interactive shell (connects to the daemon)
 ```
 
 In the shell:
@@ -26,74 +32,94 @@ list
 stream <agent-id>
 ```
 
-Or run the API + dashboard: `bun run dev -- serve` (it will pick a free port and print the URL).
+## Architecture
 
-**macOS ARM (no Bun):** Download the binary from [Releases](https://github.com/10ko/clove/releases) or `brew tap 10ko/clove && brew install clove`, then run `clove` or `clove serve`.
+Clove runs as a **daemon** — a background HTTP server that manages agents. The CLI and dashboard are clients that talk to the daemon over HTTP.
 
-## Commands
+- **Auto-start:** Running any `clove` command (including the interactive shell) will automatically start the daemon in the background if none is running.
+- **State file:** `~/.clove/daemon.json` stores the daemon's PID and port.
+- **Port selection:** Prefers port 3000; if taken, picks a free port automatically.
+
+| Command | What it does |
+|---|---|
+| `clove` | Interactive shell (starts daemon if needed) |
+| `clove daemon` | Ensure daemon is running, print its URL |
+| `clove daemon --foreground` | Run daemon in foreground (for development) |
+| `clove list` | One-shot: list agents |
+| `clove start --repo . --prompt "..."` | One-shot: start an agent |
+| `clove dashboard` | Open dashboard in browser |
+
+**Environment variables:**
+
+- `CLOVE_API_URL=http://localhost:PORT` — force the CLI to connect to a specific daemon URL.
+
+## Development
 
 ```bash
-# Install dependencies
 bun install
 
-# Interactive shell (recommended)
+# Terminal 1: daemon in foreground (see all logs)
 bun run dev
-# or: bun run src/cli.ts
 
-# From the shell:
-#   start --repo <path> [--prompt "<text>"] [--agent cursor]
-#   list
-#   stream <agent-id>
-#   send-input <agent-id> "<input>"
-#   stop <agent-id>
-#   dashboard    # opens browser, keeps shell
-#   help
-#   exit
+# Terminal 2: interactive shell
+bun run dev:shell
+
+# Or just run the CLI directly (auto-starts daemon in background)
+bun run src/cli.ts
 ```
+
+### Shell commands
+
+```
+start --repo <path> [--prompt "<text>"] [--agent cursor] [--agent-id <id>] [--branch <name>]
+list                                    List running agents
+stream <agent-id>                       Stream agent output (Ctrl+C to leave)
+send-input <agent-id> "<input>"         Send input to agent
+stop <agent-id>                         Stop an agent
+dashboard                               Open dashboard in browser
+help                                    Show help
+exit, quit                              Exit shell
+```
+
+## Install (macOS ARM binary)
+
+**Homebrew:**
 
 ```bash
-# One-off (no shell)
-bun run dev -- serve        # picks a free port
-bun run dev -- dashboard
-bun run dev -- list
-bun run dev -- start --repo . --prompt "hello"
+brew tap 10ko/clove && brew install clove
 ```
 
-## Binary (macOS ARM)
+**Or download manually** from [Releases](https://github.com/10ko/clove/releases), unzip, and run:
 
-To build a standalone executable and create the release zip:
+```bash
+./clove-macos-arm64          # interactive shell (starts daemon automatically)
+./clove-macos-arm64 list
+./clove-macos-arm64 dashboard
+```
+
+No Bun required — the binary is self-contained.
+
+## Build binary (macOS ARM)
 
 ```bash
 bun run build:binary
 ```
 
-This produces `dist/clove-macos-arm64`, `dist/dashboard/dist/`, and **`dist/clove-macos-arm64.zip`**. Upload that zip to a GitHub Release; the update-homebrew-tap workflow will update the formula.
-
-**Distribute to other Macs:**
-
-- **Homebrew:** Users run `brew tap 10ko/clove && brew install clove`. The formula fetches the zip from the latest release.
-- **Standalone binary:** Optionally sign and notarize the binary before running `zip-for-release.sh`, then share the zip. Requires Apple Developer account for notarization.
-
-Recipients unzip and run:
-
-```bash
-./clove-macos-arm64 serve    # API + dashboard at http://localhost:3000
-./clove-macos-arm64 dashboard
-./clove-macos-arm64 list
-```
+Produces `dist/clove-macos-arm64` and `dist/clove-macos-arm64.zip`. Upload the zip to a GitHub Release; the update-homebrew-tap workflow updates the Homebrew formula.
 
 ## Dashboard
 
-Run `dashboard` from the interactive shell; the app opens in your browser and the API runs on port 3000.
+Run `dashboard` from the shell or `clove dashboard` from the command line. The dashboard connects to the running daemon automatically.
 
 ## Commit and PR (worktrees)
 
-With the **local** runtime, each agent uses a git worktree on a branch like `clove/agent-123`. You commit and open a PR yourself: go to the agent’s workspace (e.g. via the dashboard “VS Code” button), commit, push the branch, then open a PR. **Push before stopping the agent** — stopping removes the worktree and deletes the local branch.
+With the **local** runtime, each agent uses a git worktree on a branch like `clove/agent-123`. You commit and open a PR yourself: go to the agent's workspace (e.g. via the dashboard "VS Code" button), commit, push the branch, then open a PR. **Push before stopping the agent** — stopping removes the worktree and deletes the local branch.
 
-## What’s next
+## What's next
 
-- **Daemon** — Run Clove as a background daemon; CLI and dashboard connect to it. First run could auto-start the daemon so there’s a single entry point.
 - **Persistence & recovery** — Persist agent list and workspace metadata so after a restart you can see what was running and recover or clean up workspaces.
 - **Config file** — Defaults for runtime, agent, paths.
+- **Desktop app** — Electron/Tauri wrapper for the dashboard.
+- **Hosted control plane** — SaaS version of the daemon.
 
-The plugin system is in place: add runtimes and agents by implementing the interfaces in `src/types.ts` and registering them in `src/cli.ts` and `src/server.ts`.
+The plugin system is in place: add runtimes and agents by implementing the interfaces in `src/types.ts` and registering them in `src/server.ts`.

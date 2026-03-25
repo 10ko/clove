@@ -1,5 +1,9 @@
 /**
- * CLI entry point. Interactive shell or single commands: start, stop, stream, send-input, list, serve, dashboard.
+ * CLI entry point. Always talks to the daemon over HTTP.
+ * If no daemon is running, starts one in the background automatically.
+ *
+ * Commands: start, stop, stream, send-input, list, dashboard, daemon, help, exit/quit.
+ * `bun run dev:daemon` runs the daemon in the foreground for development.
  */
 
 import * as readline from 'node:readline';
@@ -8,12 +12,8 @@ import fs from 'node:fs';
 import http from 'node:http';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { createCursorAgent } from './plugins/agent/cursor.js';
-import { createLocalRuntime } from './plugins/runtime/local.js';
-import { WorkspaceManager } from './workspaceManager.js';
-import { Orchestrator } from './orchestrator.js';
-import { CloveApi } from './api.js';
-import { runServer } from './server.js';
+import { HttpCloveApi } from './httpCloveApi.js';
+import { ensureDaemonBaseUrl, runDaemonListen, clearDaemonState, readDaemonState, stopDaemon } from './daemon.js';
 import { uniqueNamesGenerator, adjectives, animals } from 'unique-names-generator';
 
 function generateMemorableId(): string {
@@ -29,8 +29,8 @@ const HELP = `
 clove – orchestrate multiple AI coding agents
 
 USAGE
-  clove                    Start interactive shell (default)
-  clove [COMMAND] ...      Run a single command and exit
+  clove                    Start interactive shell (connects to daemon)
+  clove [COMMAND] ...      Run a single command against the daemon
 
 COMMANDS
   start       Start an agent (repo required; prompt optional)
@@ -38,8 +38,11 @@ COMMANDS
   stream      Stream logs and agent output
   send-input  Send input to a running agent
   list        List agents and status
-  serve       Start HTTP API server (for dashboard)
-  dashboard   Start dashboard dev server (Vite)
+  dashboard   Open dashboard in browser
+  daemon      Ensure daemon is running; print its URL
+  daemon --foreground   Run daemon in foreground (for dev)
+  daemon stop           Stop the background daemon
+  daemon status         Show daemon PID, port, and health
   help        Show this help
   exit, quit  Exit the shell (shell only)
 
@@ -47,16 +50,12 @@ OPTIONS
   -h, --help  Show this help
 
 EXAMPLES
-  clove
-  clove> start --repo . --prompt "Add tests for auth"
-  clove> list
-  clove> stream agent-123
-  clove> exit
-
-  clove serve --port 3000   # API at http://localhost:3000
-  clove dashboard           # Dashboard at http://localhost:5173 (run "clove serve" in another terminal)
+  clove                                     # interactive shell (starts daemon if needed)
+  clove start --repo . --prompt "Add tests" # one-shot command
   clove list
-  clove start --repo . --prompt "hello"
+  clove dashboard
+  clove daemon                              # ensure daemon is running
+  clove daemon --foreground                 # run daemon in foreground (for dev)
 `.trim();
 
 const SHELL_HELP = `
@@ -65,9 +64,9 @@ const SHELL_HELP = `
   stream <agent-id>                       Stream agent output (Ctrl+C to exit stream)
   send-input <agent-id> "<input>"         Send input to agent
   stop <agent-id>                         Stop an agent
-  dashboard                               Start dashboard (Vite dev server)
+  dashboard                               Open dashboard in browser
   help                                    Show help
-  exit, quit                              Exit shell (stops all agents)
+  exit, quit                              Exit shell
 `.trim();
 
 function getArg(args: string[], name: string): string | undefined {
@@ -76,7 +75,6 @@ function getArg(args: string[], name: string): string | undefined {
   return args[i + 1];
 }
 
-/** Parse a line into tokens, respecting double-quoted strings. */
 function tokenize(line: string): string[] {
   const tokens: string[] = [];
   let i = 0;
@@ -103,44 +101,30 @@ function tokenize(line: string): string[] {
 }
 
 function isCompiledBinary(): boolean {
-  const name = path.basename(process.execPath);
-  return name.startsWith('clove');
+  return path.basename(process.execPath).startsWith('clove');
 }
 
-let sharedServer: http.Server | null = null;
-let sharedApiPort: number | null = null;
-
-async function ensureApiServer(preferredPort = 3000): Promise<number> {
-  if (sharedServer && sharedApiPort != null) return sharedApiPort;
-
-  return await new Promise<number>((resolve, reject) => {
-    let usedFallback = false;
-
-    const startOnPort = (port: number): void => {
-      const { server } = runServer(port, (actualPort) => {
-        sharedServer = server;
-        sharedApiPort = actualPort;
-        resolve(actualPort);
-      });
-      server.once('error', (err: NodeJS.ErrnoException) => {
-        if (err.code === 'EADDRINUSE' && !usedFallback) {
-          usedFallback = true;
-          // Retry on an OS-assigned free port.
-          startOnPort(0);
-        } else {
-          reject(err);
-        }
-      });
-    };
-
-    startOnPort(preferredPort);
-  });
+function parseSourceRepo(repo: string): { type: 'path'; path: string } | { type: 'url'; url: string } {
+  const trimmed = repo.trim();
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('git@')) {
+    return { type: 'url', url: trimmed };
+  }
+  return { type: 'path', path: trimmed };
 }
 
-async function runDashboard(options?: {
-  exitOnClose?: boolean;
-  dashboardChildRef?: { current: ChildProcess | null };
-}): Promise<void> {
+function openBrowser(url: string): void {
+  const cmd = process.platform === 'win32' ? 'start' : process.platform === 'darwin' ? 'open' : 'xdg-open';
+  spawn(cmd, [url], { stdio: 'ignore', shell: true }).unref();
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard
+// ---------------------------------------------------------------------------
+
+async function runDashboard(
+  daemonBaseUrl: string,
+  options?: { exitOnClose?: boolean; dashboardChildRef?: { current: ChildProcess | null } }
+): Promise<void> {
   const exitOnClose = options?.exitOnClose ?? false;
   const dashboardChildRef = options?.dashboardChildRef;
   const cliDir = path.dirname(fileURLToPath(import.meta.url));
@@ -149,72 +133,37 @@ async function runDashboard(options?: {
     ? path.join(execDir, 'dashboard')
     : path.join(cliDir, '..', 'dashboard');
 
-  const apiPort = await ensureApiServer(3000);
-
-  const openBrowser = (url: string): void => {
-    const cmd = process.platform === 'win32' ? 'start' : process.platform === 'darwin' ? 'open' : 'xdg-open';
-    spawn(cmd, [url], { stdio: 'ignore', shell: true }).unref();
-  };
-
-  // Compiled binary: server serves dashboard from dashboard/dist; just open browser
+  // Compiled binary: dashboard is served by the daemon; just open browser.
   if (isCompiledBinary()) {
-    const dashboardUrl = `http://localhost:${apiPort}`;
-    const waitForServer = (url: string, timeoutMs: number): Promise<void> =>
-      new Promise((resolve) => {
-        const start = Date.now();
-        const tryFetch = (): void => {
-          const req = http.get(url, () => resolve());
-          req.on('error', () => {
-            if (Date.now() - start < timeoutMs) setTimeout(tryFetch, 200);
-            else resolve();
-          });
-          req.end();
-        };
-        tryFetch();
-      });
-    console.log(`Dashboard at ${dashboardUrl}\n`);
-    return waitForServer(dashboardUrl, 5000).then(() => {
-      openBrowser(dashboardUrl);
-      console.log('Dashboard opened in browser. You can keep using the shell.\n');
-      if (exitOnClose) {
-        process.on('SIGINT', () => {
-          process.exit(0);
-        });
-        process.on('SIGTERM', () => {
-          process.exit(0);
-        });
-        return new Promise<void>(() => {}); // never resolve — keep process alive
-      }
-    });
+    console.log(`Dashboard at ${daemonBaseUrl}\n`);
+    openBrowser(daemonBaseUrl);
+    console.log('Dashboard opened in browser.\n');
+    if (exitOnClose) {
+      await new Promise<void>(() => {});
+    }
+    return;
   }
 
-  // From source: need dashboard dir and Vite
+  // Dev: start Vite with VITE_CLOVE_API_URL pointing at the daemon.
   if (!fs.existsSync(dashboardDir)) {
     console.error('clove: dashboard not found at', dashboardDir);
     if (exitOnClose) process.exit(1);
-    return Promise.resolve();
+    return;
   }
-  const packageJson = path.join(dashboardDir, 'package.json');
-  if (!fs.existsSync(packageJson)) {
-    console.error('clove: dashboard/package.json not found. Run bun install in the project first.');
-    if (exitOnClose) process.exit(1);
-    return Promise.resolve();
-  }
-
   const viteBin = path.join(dashboardDir, 'node_modules', 'vite', 'bin', 'vite.js');
   if (!fs.existsSync(viteBin)) {
     console.error('clove: dashboard/node_modules/vite not found. Run: cd dashboard && bun install');
     if (exitOnClose) process.exit(1);
-    return Promise.resolve();
+    return;
   }
 
-  console.log(`API at http://localhost:${apiPort}`);
+  console.log(`API at ${daemonBaseUrl}`);
   console.log('Dashboard at http://localhost:5173\n');
 
   const dashboardBin = path.join(dashboardDir, 'node_modules', '.bin');
   const env: NodeJS.ProcessEnv = {
     ...process.env,
-    VITE_CLOVE_API_URL: `http://localhost:${apiPort}`,
+    VITE_CLOVE_API_URL: `${daemonBaseUrl}/api`,
   };
   delete env.NODE_PATH;
   if (process.env.PATH) {
@@ -223,7 +172,7 @@ async function runDashboard(options?: {
 
   const dashboardUrl = 'http://localhost:5173';
 
-  const waitForServer = (url: string, timeoutMs: number): Promise<void> =>
+  const waitForUrl = (url: string, timeoutMs: number): Promise<void> =>
     new Promise((resolve) => {
       const start = Date.now();
       const tryFetch = (): void => {
@@ -245,23 +194,8 @@ async function runDashboard(options?: {
     });
     if (dashboardChildRef && !exitOnClose) dashboardChildRef.current = child;
 
-    const cleanup = (): void => {
-      try {
-        child.kill();
-      } catch {
-        // ignore
-      }
-    };
-
-    const onExit = (code: number | null): void => {
-      process.removeListener('SIGINT', onSignal);
-      process.removeListener('SIGTERM', onSignal);
-      if (exitOnClose) process.exit(code ?? 0);
-      else resolve();
-    };
-
     const onSignal = (): void => {
-      cleanup();
+      try { child.kill(); } catch { /* ignore */ }
       process.exit(0);
     };
 
@@ -272,7 +206,10 @@ async function runDashboard(options?: {
 
     child.on('exit', (code) => {
       if (dashboardChildRef) dashboardChildRef.current = null;
-      onExit(code);
+      process.removeListener('SIGINT', onSignal);
+      process.removeListener('SIGTERM', onSignal);
+      if (exitOnClose) process.exit(code ?? 0);
+      else resolve();
     });
     child.on('error', (err) => {
       console.error('clove:', err.message);
@@ -281,7 +218,7 @@ async function runDashboard(options?: {
     });
 
     if (!exitOnClose) {
-      waitForServer(dashboardUrl, 10000).then(() => {
+      waitForUrl(dashboardUrl, 10000).then(() => {
         setTimeout(() => {
           openBrowser(dashboardUrl);
           console.log('Dashboard opened in browser. You can keep using the shell.\n');
@@ -292,41 +229,23 @@ async function runDashboard(options?: {
   });
 }
 
-function createApi(): CloveApi {
-  const orchestrator = new Orchestrator({
-    workspaceManager: new WorkspaceManager(),
-    runtimes: {
-      local: createLocalRuntime(),
-    },
-    plugins: {
-      cursor: () => createCursorAgent(),
-    },
-  });
-  return new CloveApi(orchestrator);
-}
+// ---------------------------------------------------------------------------
+// Run a single command
+// ---------------------------------------------------------------------------
 
-function parseSourceRepo(repo: string): { type: 'path'; path: string } | { type: 'url'; url: string } {
-  const trimmed = repo.trim();
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('git@')) {
-    return { type: 'url', url: trimmed };
-  }
-  return { type: 'path', path: trimmed };
-}
-
-/** Ref used to interrupt the stream from SIGINT (Ctrl+C). Set by stream command, cleared when done. */
 type StreamInterruptRef = { current: (() => void) | null };
 
-/** Run a single command. Returns true if shell should exit (e.g. "exit" in shell). */
 async function runCommand(
   command: string,
   rest: string[],
-  api: CloveApi,
+  api: HttpCloveApi,
+  daemonBaseUrl: string,
   singleShot: boolean,
   streamInterruptRef?: StreamInterruptRef,
   dashboardChildRef?: { current: ChildProcess | null }
 ): Promise<boolean> {
   if (command === 'list') {
-    const agents = api.listAgents();
+    const agents = await api.listAgents();
     if (agents.length === 0) {
       console.log('No agents.');
       return false;
@@ -370,22 +289,11 @@ async function runCommand(
   }
 
   if (command === 'exit' || command === 'quit') {
-    if (!singleShot) {
-      const agents = api.listAgents();
-      for (const a of agents) {
-        try {
-          await api.stopAgent(a.agentId);
-          console.log(`Stopped ${a.agentId}`);
-        } catch {
-          // ignore
-        }
-      }
-    }
     return true;
   }
 
   if (command === 'dashboard') {
-    await runDashboard({
+    await runDashboard(daemonBaseUrl, {
       exitOnClose: singleShot,
       ...(dashboardChildRef && { dashboardChildRef }),
     });
@@ -466,60 +374,44 @@ async function runCommand(
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// Interactive shell
+// ---------------------------------------------------------------------------
+
 async function runInteractiveShell(): Promise<void> {
+  const daemonBaseUrl = await ensureDaemonBaseUrl();
+  const api = new HttpCloveApi(daemonBaseUrl);
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  const api = createApi();
   const streamInterruptRef: StreamInterruptRef = { current: null };
-
   const dashboardChildRef = { current: null as ChildProcess | null };
-
-  const stopAllAgentsAndExit = async (): Promise<void> => {
-    if (dashboardChildRef.current) {
-      try {
-        dashboardChildRef.current.kill();
-      } catch {
-        // ignore
-      }
-      dashboardChildRef.current = null;
-    }
-    for (const a of api.listAgents()) {
-      try {
-        await api.stopAgent(a.agentId);
-      } catch {
-        // ignore
-      }
-    }
-    process.exit(0);
-  };
 
   process.on('SIGINT', () => {
     if (streamInterruptRef.current) {
       streamInterruptRef.current();
       streamInterruptRef.current = null;
     } else {
-      void stopAllAgentsAndExit();
+      if (dashboardChildRef.current) {
+        try { dashboardChildRef.current.kill(); } catch { /* ignore */ }
+        dashboardChildRef.current = null;
+      }
+      process.exit(0);
     }
   });
 
-  const apiPort = await ensureApiServer(3000);
-  console.log(`API at http://localhost:${apiPort}`);
+  console.log(`Connected to daemon at ${daemonBaseUrl}`);
   console.log('clove – interactive shell. Type "help" for commands, "exit" to quit.\n');
 
   const loop = (): void => {
     rl.question('clove> ', async (line) => {
       const trimmed = line.trim();
-      if (!trimmed) {
-        loop();
-        return;
-      }
+      if (!trimmed) { loop(); return; }
       const tokens = tokenize(trimmed);
       const [cmd, ...rest] = tokens;
-      if (!cmd) {
-        loop();
-        return;
-      }
+      if (!cmd) { loop(); return; }
       try {
-        const shouldExit = await runCommand(cmd.toLowerCase(), rest, api, false, streamInterruptRef, dashboardChildRef);
+        const shouldExit = await runCommand(
+          cmd.toLowerCase(), rest, api, daemonBaseUrl, false, streamInterruptRef, dashboardChildRef
+        );
         if (shouldExit) {
           rl.close();
           process.exit(0);
@@ -533,18 +425,59 @@ async function runInteractiveShell(): Promise<void> {
   loop();
 }
 
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+
 async function main(): Promise<void> {
   const rawArgs = process.argv.slice(2);
-  const showHelp =
-    rawArgs.length === 0 ? false : rawArgs.includes('--help') || rawArgs.includes('-h');
 
-  if (showHelp) {
+  if (rawArgs.includes('--help') || rawArgs.includes('-h')) {
     console.log(HELP);
     process.exit(0);
   }
 
-  // No args or explicit "shell" → interactive shell
   const first = rawArgs[0];
+
+  // daemon subcommands
+  if (first === 'daemon') {
+    const sub = rawArgs[1];
+
+    if (sub === 'stop') {
+      const killed = await stopDaemon();
+      console.log(killed ? 'Daemon stopped.' : 'No daemon was running.');
+      process.exit(0);
+    }
+
+    if (sub === 'status') {
+      const state = readDaemonState();
+      if (!state) {
+        console.log('No daemon state file found.');
+        process.exit(0);
+      }
+      const url = `http://localhost:${state.port}`;
+      const alive = await (await import('./daemon.js')).healthCheck(url);
+      console.log(`PID:        ${state.pid}`);
+      console.log(`Port:       ${state.port}`);
+      console.log(`Started at: ${state.startedAt}`);
+      console.log(`Status:     ${alive ? 'healthy' : 'not reachable'}`);
+      process.exit(0);
+    }
+
+    if (rawArgs.includes('--foreground') || rawArgs.includes('--listen')) {
+      await runDaemonListen();
+      process.on('SIGINT', () => { clearDaemonState(); process.exit(0); });
+      process.on('SIGTERM', () => { clearDaemonState(); process.exit(0); });
+      await new Promise<void>(() => {});
+      return;
+    }
+
+    const base = await ensureDaemonBaseUrl();
+    console.log(`Clove daemon running at ${base}`);
+    process.exit(0);
+  }
+
+  // No args → interactive shell (auto-starts daemon if needed)
   if (
     rawArgs.length === 0 ||
     first === 'shell' ||
@@ -555,53 +488,27 @@ async function main(): Promise<void> {
     return;
   }
 
-  // serve: start HTTP server (single-command only)
-  if (first === 'serve') {
-    const portArg = getArg(rawArgs.slice(1), '--port');
-    if (!portArg) {
-      // No port specified: let OS choose a free port.
-      runServer(0);
-      return;
-    }
-    const port = Number(portArg);
-    if (!Number.isFinite(port) || port <= 0 || port > 65535) {
-      console.error('clove: invalid --port');
-      process.exit(1);
-    }
-    runServer(port);
-    return;
-  }
-
-  // dashboard: start Vite dev server for the dashboard
+  // dashboard
   if (first === 'dashboard') {
-    await runDashboard({ exitOnClose: true });
+    const daemonBaseUrl = await ensureDaemonBaseUrl();
+    await runDashboard(daemonBaseUrl, { exitOnClose: true });
     return;
   }
 
-  // Single-command mode
+  // One-shot commands: connect to daemon and run
+  const knownCommands = ['start', 'stop', 'stream', 'send-input', 'list', 'help'];
   const [command, ...rest] = rawArgs;
-  const knownCommands = [
-    'start',
-    'stop',
-    'stream',
-    'send-input',
-    'list',
-    'serve',
-    'dashboard',
-    'help',
-    'exit',
-    'quit',
-  ];
   if (!knownCommands.includes(command)) {
     console.error(`clove: unknown command "${command}"`);
     console.log(HELP);
     process.exit(1);
   }
 
-  const api = createApi();
+  const daemonBaseUrl = await ensureDaemonBaseUrl();
+  const api = new HttpCloveApi(daemonBaseUrl);
 
   try {
-    const shouldExit = await runCommand(command, rest, api, true);
+    const shouldExit = await runCommand(command, rest, api, daemonBaseUrl, true);
     process.exit(shouldExit ? 0 : 0);
   } catch (err) {
     console.error('clove:', err instanceof Error ? err.message : String(err));
