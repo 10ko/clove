@@ -68,7 +68,8 @@ export function createLocalRuntime(): AgentRuntime {
       agentId: AgentId,
       workspacePath: string,
       agent: AgentPlugin,
-      prompt: string
+      prompt: string,
+      options?: { resumeSessionId?: string; onSessionCreated?: (sessionId: string) => void }
     ): Promise<void> {
       if (entries.has(agentId)) {
         throw new Error(`Agent already running: ${agentId}`);
@@ -76,7 +77,14 @@ export function createLocalRuntime(): AgentRuntime {
       const queue = new StreamQueue();
       const agentStateRef: AgentStateRef = { current: 'waiting' };
       const abortController = new AbortController();
-      const context = { workspacePath, agentId, agentStateRef, abortSignal: abortController.signal };
+      const context: import('../../types.js').AgentContext = {
+        workspacePath,
+        agentId,
+        agentStateRef,
+        abortSignal: abortController.signal,
+        resumeSessionId: options?.resumeSessionId,
+        onSessionCreated: options?.onSessionCreated,
+      };
       const stream = agent.stream(prompt, context);
       const streamIterator = stream[Symbol.asyncIterator]();
       const taskPromise = (async () => {

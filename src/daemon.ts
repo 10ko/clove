@@ -8,6 +8,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { runServer } from './server.js';
+import type { CloveApi } from './api.js';
 
 export interface DaemonState {
   pid: number;
@@ -77,11 +78,13 @@ export async function healthCheck(baseUrl: string): Promise<boolean> {
 }
 
 /** Start HTTP server: prefer 3000, fall back to OS-assigned free port. */
-export function startDaemonServer(onListening: (port: number) => void): void {
+export function startDaemonServer(
+  onListening: (port: number, api: CloveApi) => void
+): void {
   let usedFallback = false;
   const tryPort = (port: number): void => {
-    const { server } = runServer(port, (actualPort) => {
-      onListening(actualPort);
+    const { server, api } = runServer(port, (actualPort) => {
+      onListening(actualPort, api);
     });
     server.once('error', (err: NodeJS.ErrnoException) => {
       if (err.code === 'EADDRINUSE' && !usedFallback) {
@@ -98,14 +101,26 @@ export function startDaemonServer(onListening: (port: number) => void): void {
 
 export async function runDaemonListen(): Promise<void> {
   return await new Promise<void>((resolve) => {
-    startDaemonServer((port) => {
+    startDaemonServer((port, api) => {
       writeDaemonState(port);
       console.log(`Clove daemon listening on http://localhost:${port}`);
       console.log(`  PID ${process.pid} — state: ${DAEMON_FILE}`);
+
+      const gracefulShutdown = async (): Promise<void> => {
+        console.log('\nClove daemon shutting down — pausing all agents...');
+        try { await api.pauseAll(); } catch { /* best effort */ }
+        clearDaemonState();
+        process.exit(0);
+      };
+      process.on('SIGINT', () => { gracefulShutdown(); });
+      process.on('SIGTERM', () => { gracefulShutdown(); });
+
       resolve();
     });
   });
 }
+
+const DAEMON_LOG = path.join(CLOVE_DIR, 'daemon.log');
 
 function spawnDaemonChild(): void {
   const projectRoot = getProjectRoot();
@@ -117,16 +132,20 @@ function spawnDaemonChild(): void {
     ? ['daemon', '--listen']
     : [cliPath, 'daemon', '--listen'];
 
+  fs.mkdirSync(CLOVE_DIR, { recursive: true });
+  const logFd = fs.openSync(DAEMON_LOG, 'a');
+
   const child = spawn(exe, args, {
     cwd: projectRoot,
     detached: true,
-    stdio: 'ignore',
+    stdio: ['ignore', logFd, logFd],
     env: { ...process.env },
   });
   child.on('error', (err) => {
     console.error('clove: could not spawn daemon process:', err.message);
   });
   child.unref();
+  fs.closeSync(logFd);
 }
 
 /** Stop the running daemon. Returns true if a daemon was killed. */

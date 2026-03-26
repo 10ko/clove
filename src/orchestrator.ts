@@ -1,9 +1,16 @@
 /**
- * Orchestrator core: track agents, manage workspaces, expose unified API for CLI and dashboard.
+ * Orchestrator core: track agents, manage workspaces, persist state via store.
+ *
+ * Agent lifecycle:
+ *   start  → running  (create worktree, start process, persist)
+ *   pause  → sleeping (terminate process, keep worktree, persist)
+ *   resume → running  (restart process on existing worktree, persist)
+ *   delete → gone     (terminate process, remove worktree, remove from DB)
  */
 
 import type {
   AgentId,
+  AgentPlugin,
   AgentRuntime,
   AgentState,
   AgentStatus,
@@ -11,41 +18,75 @@ import type {
   StreamEnvelope,
 } from './types.js';
 import type { WorkspaceManager } from './workspaceManager.js';
+import type { WorkspaceStore } from './store.js';
+
+export type PersistentStatus = 'running' | 'sleeping';
 
 export interface AgentRecord {
   agentId: AgentId;
-  status: AgentStatus;
+  status: PersistentStatus;
   workspacePath: string;
-  /** Git branch for this agent's workspace. */
-  branch?: string;
+  branch: string;
   runtimeKey: string;
   pluginKey: string;
-  /** Agent phase: busy (prompt in flight) or waiting (ready for input). Only set when runtime supports it. */
+  sourceRepo: SourceRepo;
+  mainRepoRoot?: string;
+  prompt: string;
+  sessionId?: string;
   agentState?: AgentState;
+  createdAt?: string;
 }
 
 export interface OrchestratorOptions {
   workspaceManager: WorkspaceManager;
   runtimes: Record<string, AgentRuntime>;
-  plugins: Record<string, () => import('./types.js').AgentPlugin>;
+  plugins: Record<string, () => AgentPlugin>;
+  store?: WorkspaceStore;
 }
 
 export class Orchestrator {
   private readonly workspaceManager: WorkspaceManager;
   private readonly runtimes: Record<string, AgentRuntime>;
-  private readonly plugins: Record<string, () => import('./types.js').AgentPlugin>;
+  private readonly plugins: Record<string, () => AgentPlugin>;
+  private readonly store?: WorkspaceStore;
   private readonly agents = new Map<AgentId, AgentRecord>();
 
   constructor(options: OrchestratorOptions) {
     this.workspaceManager = options.workspaceManager;
     this.runtimes = options.runtimes;
     this.plugins = options.plugins;
+    this.store = options.store;
   }
 
   /**
-   * Start an agent: create workspace, run runtime + plugin.
-   * Uses registered runtimes and plugins (e.g. local + cursor).
+   * Load persisted workspaces from DB on daemon startup.
+   * All previously-running agents are marked sleeping (processes are gone).
    */
+  async loadFromStore(): Promise<void> {
+    if (!this.store) return;
+    await this.store.markAllAsSleeping();
+    const rows = await this.store.listAll();
+    for (const row of rows) {
+      const sourceRepo: SourceRepo =
+        row.source_repo_type === 'url'
+          ? { type: 'url', url: row.source_repo_value }
+          : { type: 'path', path: row.source_repo_value };
+      this.agents.set(row.agent_id, {
+        agentId: row.agent_id,
+        status: 'sleeping',
+        workspacePath: row.workspace_path,
+        branch: row.branch,
+        runtimeKey: row.runtime_key,
+        pluginKey: row.plugin_key,
+        sourceRepo,
+        mainRepoRoot: row.main_repo_root ?? undefined,
+        prompt: row.prompt,
+        sessionId: row.session_id ?? undefined,
+        createdAt: row.created_at,
+      });
+    }
+  }
+
   async startAgent(
     agentId: AgentId,
     sourceRepo: SourceRepo,
@@ -69,41 +110,113 @@ export class Orchestrator {
     }
     const runtimeType = runtimeKey === 'local' ? 'local' : 'remote';
     const { path: workspacePath, branch, mainRepoRoot } =
-      await this.workspaceManager.createWorkspace(
-        agentId,
-        sourceRepo,
-        runtimeType,
-        options
-      );
-    this.agents.set(agentId, {
+      await this.workspaceManager.createWorkspace(agentId, sourceRepo, runtimeType, options);
+
+    const record: AgentRecord = {
       agentId,
       status: 'running',
       workspacePath,
       branch,
       runtimeKey,
       pluginKey,
+      sourceRepo,
+      mainRepoRoot,
+      prompt,
+      createdAt: new Date().toISOString(),
+    };
+    this.agents.set(agentId, record);
+
+    await this.store?.insert({
+      agentId,
+      status: 'running',
+      workspacePath,
+      branch,
+      sourceRepo,
+      mainRepoRoot,
+      runtimeKey,
+      pluginKey,
+      prompt,
     });
+
     const plugin = pluginFactory();
-    await runtime.start(agentId, workspacePath, plugin, prompt);
-    const repoPath =
-      sourceRepo.type === 'path' ? sourceRepo.path : sourceRepo.url;
+    const store = this.store;
+    await runtime.start(agentId, workspacePath, plugin, prompt, {
+      onSessionCreated: (sessionId) => {
+        record.sessionId = sessionId;
+        store?.updateSessionId(agentId, sessionId).catch(() => {});
+      },
+    });
+
+    const repoPath = sourceRepo.type === 'path' ? sourceRepo.path : sourceRepo.url;
     return { path: workspacePath, branch, mainRepoRoot, repoPath };
   }
 
-  async stopAgent(agentId: AgentId): Promise<void> {
+  /** Pause an agent: stop its process but keep the worktree. */
+  async pauseAgent(agentId: AgentId): Promise<void> {
     const record = this.agents.get(agentId);
-    if (!record) return;
+    if (!record) throw new Error(`Agent not found: ${agentId}`);
+    if (record.status === 'sleeping') return;
+
     const runtime = this.runtimes[record.runtimeKey];
     if (runtime) await runtime.stop(agentId);
+
+    record.status = 'sleeping';
+    await this.store?.updateStatus(agentId, 'sleeping');
+  }
+
+  /** Resume a sleeping agent: restart its process on the existing worktree. */
+  async resumeAgent(agentId: AgentId, prompt?: string): Promise<void> {
+    const record = this.agents.get(agentId);
+    if (!record) throw new Error(`Agent not found: ${agentId}`);
+    if (record.status === 'running') throw new Error(`Agent is already running: ${agentId}`);
+
+    const runtime = this.runtimes[record.runtimeKey];
+    const pluginFactory = this.plugins[record.pluginKey];
+    if (!runtime || !pluginFactory) {
+      throw new Error(`Unknown runtime "${record.runtimeKey}" or plugin "${record.pluginKey}"`);
+    }
+
+    const effectivePrompt = prompt ?? '';
+    const plugin = pluginFactory();
+    const store = this.store;
+    await runtime.start(agentId, record.workspacePath, plugin, effectivePrompt, {
+      resumeSessionId: record.sessionId,
+      onSessionCreated: (sessionId) => {
+        record.sessionId = sessionId;
+        store?.updateSessionId(agentId, sessionId).catch(() => {});
+      },
+    });
+
+    record.status = 'running';
+    if (prompt) record.prompt = prompt;
+    await this.store?.updateStatus(agentId, 'running');
+  }
+
+  /** Delete an agent: stop process (if running), remove worktree, remove from DB. */
+  async deleteAgent(agentId: AgentId): Promise<void> {
+    const record = this.agents.get(agentId);
+    if (!record) return;
+
+    if (record.status === 'running') {
+      const runtime = this.runtimes[record.runtimeKey];
+      if (runtime) await runtime.stop(agentId);
+    }
+
     await this.workspaceManager.removeWorkspace(agentId);
     this.agents.delete(agentId);
+    await this.store?.delete(agentId);
+  }
+
+  /** Pause all running agents (used during graceful shutdown). */
+  async pauseAll(): Promise<void> {
+    const running = Array.from(this.agents.values()).filter((r) => r.status === 'running');
+    await Promise.allSettled(running.map((r) => this.pauseAgent(r.agentId)));
   }
 
   getAgentStatus(agentId: AgentId): AgentStatus | undefined {
     return this.agents.get(agentId)?.status;
   }
 
-  /** Get full record for an agent, including agentState if the runtime supports it. */
   getAgentRecord(agentId: AgentId): AgentRecord | undefined {
     const record = this.agents.get(agentId);
     if (!record) return undefined;
@@ -115,18 +228,16 @@ export class Orchestrator {
   }
 
   private enrichWithAgentState(record: AgentRecord): AgentRecord {
+    if (record.status !== 'running') return record;
     const runtime = this.runtimes[record.runtimeKey];
     const state = runtime?.getAgentState?.(record.agentId);
     if (state?.agentState == null) return record;
     return { ...record, agentState: state.agentState };
   }
 
-  /**
-   * Stream logs/agent output for an agent. Returns async iterable; empty if agent unknown.
-   */
   streamLogs(agentId: AgentId): AsyncIterable<StreamEnvelope> {
     const record = this.agents.get(agentId);
-    if (!record) {
+    if (!record || record.status !== 'running') {
       return (async function* () {})();
     }
     const runtime = this.runtimes[record.runtimeKey];
@@ -138,17 +249,13 @@ export class Orchestrator {
 
   async sendInput(agentId: AgentId, input: string): Promise<void> {
     const record = this.agents.get(agentId);
-    if (!record) {
-      throw new Error(`Agent not found: ${agentId}`);
-    }
+    if (!record) throw new Error(`Agent not found: ${agentId}`);
+    if (record.status !== 'running') throw new Error(`Agent is not running: ${agentId}`);
     const runtime = this.runtimes[record.runtimeKey];
-    if (!runtime) {
-      throw new Error(`Runtime not found: ${record.runtimeKey}`);
-    }
+    if (!runtime) throw new Error(`Runtime not found: ${record.runtimeKey}`);
     await runtime.sendInput(agentId, input);
   }
 
-  /** Cancel the current prompt turn (e.g. send ACP session/cancel). No-op if runtime does not support it. */
   async cancelAgent(agentId: AgentId): Promise<void> {
     const record = this.agents.get(agentId);
     if (!record) return;

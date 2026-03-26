@@ -144,7 +144,7 @@ describe('WorkspaceManager', () => {
     });
 
     it('is idempotent when agent unknown', async () => {
-      await expect(manager.removeWorkspace('unknown')).resolves.not.toThrow();
+      await expect(manager.removeWorkspace('unknown')).resolves.toBeUndefined();
     });
   });
 });

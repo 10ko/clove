@@ -74,11 +74,32 @@ export async function startAgent(body: StartAgentBody): Promise<StartAgentRespon
   return res.json();
 }
 
-export async function stopAgent(agentId: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/agents/${encodeURIComponent(agentId)}/stop`, {
+export async function pauseAgent(agentId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/agents/${encodeURIComponent(agentId)}/pause`, {
     method: 'POST',
   });
   if (!res.ok) throw new Error(await res.text());
+}
+
+export async function resumeAgent(agentId: string, prompt?: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/agents/${encodeURIComponent(agentId)}/resume`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: prompt ?? '' }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+}
+
+export async function deleteAgent(agentId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/agents/${encodeURIComponent(agentId)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error(await res.text());
+}
+
+/** @deprecated Use pauseAgent */
+export async function stopAgent(agentId: string): Promise<void> {
+  return pauseAgent(agentId);
 }
 
 export async function cancelAgent(agentId: string): Promise<void> {

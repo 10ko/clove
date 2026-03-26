@@ -12,6 +12,7 @@ export type RuntimeType = 'local' | 'remote';
 export type AgentStatus =
   | 'pending'
   | 'running'
+  | 'sleeping'
   | 'stopped'
   | 'failed'
   | 'completed';
@@ -39,6 +40,10 @@ export interface AgentContext {
   agentStateRef?: AgentStateRef;
   /** Optional: when aborted, plugin should exit stream and clean up (e.g. kill child). */
   abortSignal?: AbortSignal;
+  /** If set, the plugin should resume this session (e.g. ACP session/load) instead of creating a new one. */
+  resumeSessionId?: string;
+  /** Called by the plugin when a new session is created, so the orchestrator can persist the ID. */
+  onSessionCreated?: (sessionId: string) => void;
   [key: string]: unknown;
 }
 
@@ -64,7 +69,8 @@ export interface AgentRuntime {
     agentId: AgentId,
     workspacePath: string,
     agent: AgentPlugin,
-    prompt: string
+    prompt: string,
+    options?: { resumeSessionId?: string; onSessionCreated?: (sessionId: string) => void }
   ): Promise<void>;
   stop(agentId: AgentId): Promise<void>;
   streamLogs(agentId: AgentId): AsyncIterable<StreamEnvelope>;

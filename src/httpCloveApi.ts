@@ -1,5 +1,5 @@
 /**
- * CLI talking to a running Clove HTTP API (daemon).
+ * HTTP client for talking to a running Clove daemon.
  */
 
 import type { AgentId, StreamEnvelope } from './types.js';
@@ -50,11 +50,32 @@ export class HttpCloveApi implements CliApi {
     return res.json() as Promise<StartAgentResult>;
   }
 
-  async stopAgent(agentId: AgentId): Promise<void> {
-    const res = await fetch(this.url(`/api/agents/${encodeURIComponent(agentId)}/stop`), {
+  async pauseAgent(agentId: AgentId): Promise<void> {
+    const res = await fetch(this.url(`/api/agents/${encodeURIComponent(agentId)}/pause`), {
       method: 'POST',
     });
     if (!res.ok) throw new Error(await res.text());
+  }
+
+  async resumeAgent(agentId: AgentId, prompt?: string): Promise<void> {
+    const res = await fetch(this.url(`/api/agents/${encodeURIComponent(agentId)}/resume`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: prompt ?? '' }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+  }
+
+  async deleteAgent(agentId: AgentId): Promise<void> {
+    const res = await fetch(this.url(`/api/agents/${encodeURIComponent(agentId)}`), {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error(await res.text());
+  }
+
+  /** @deprecated Use pauseAgent. Kept for backward compat. */
+  async stopAgent(agentId: AgentId): Promise<void> {
+    return this.pauseAgent(agentId);
   }
 
   async *stream(agentId: AgentId): AsyncIterable<StreamEnvelope> {

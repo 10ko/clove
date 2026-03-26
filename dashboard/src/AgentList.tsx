@@ -44,9 +44,9 @@ export function AgentList({ agents, selectedId, onSelect }: Props) {
                 <div style={cardNameTagsBlockStyle}>
                   <span style={cardIdStyle}>{a.agentId}</span>
                   <div style={cardTagsRowStyle}>
-                    {a.agentState != null && (
-                      <span style={cardAgentStateBadgeStyle(a.agentState)}>{a.agentState}</span>
-                    )}
+                    <span style={cardStatusBadgeStyle(a.status)}>
+                      {a.status === 'sleeping' ? 'sleeping' : a.agentState ?? 'running'}
+                    </span>
                     <span style={cardTagStyle}>{a.runtimeKey}</span>
                     <span style={cardTagStyle}>{a.pluginKey}</span>
                   </div>
@@ -178,13 +178,22 @@ const cardTagStyle: React.CSSProperties = {
   textTransform: 'capitalize',
 };
 
-function cardAgentStateBadgeStyle(agentState: 'busy' | 'waiting'): React.CSSProperties {
+function cardStatusBadgeStyle(status: string): React.CSSProperties {
+  if (status === 'sleeping') {
+    return {
+      fontSize: '0.8125rem',
+      padding: '0.2rem 0.5rem',
+      borderRadius: '0.25rem',
+      background: 'rgba(148, 163, 184, 0.2)',
+      color: '#94a3b8',
+    };
+  }
   return {
     fontSize: '0.8125rem',
     padding: '0.2rem 0.5rem',
     borderRadius: '0.25rem',
-    background: agentState === 'busy' ? 'rgba(251, 191, 36, 0.2)' : 'rgba(34, 197, 94, 0.2)',
-    color: agentState === 'busy' ? '#fbbf24' : '#22c55e',
+    background: 'rgba(34, 197, 94, 0.2)',
+    color: '#22c55e',
   };
 }
 

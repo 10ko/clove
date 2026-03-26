@@ -246,23 +246,39 @@ function runCursorStreamAcp(
       };
 
       try {
-        await send('initialize', {
+        const initResult = await send('initialize', {
           protocolVersion: 1,
           clientCapabilities: {
             fs: { readTextFile: true, writeTextFile: true },
             terminal: false,
           },
           clientInfo: { name: 'clove', version: '0.1.0' },
-        });
+        }) as { agentCapabilities?: { loadSession?: boolean } } | undefined;
         await send('authenticate', { methodId: 'cursor_login' });
-        const result = await send('session/new', {
-          cwd: context.workspacePath,
-          mcpServers: [],
-        }) as { sessionId?: string };
-        const sessionId = result?.sessionId;
-        if (!sessionId) {
-          throw new Error('ACP session/new did not return sessionId');
+
+        const canLoadSession = initResult?.agentCapabilities?.loadSession === true;
+        const resumeId = context.resumeSessionId;
+        let sessionId: string;
+
+        if (resumeId && canLoadSession) {
+          await send('session/load', {
+            sessionId: resumeId,
+            cwd: context.workspacePath,
+            mcpServers: [],
+          });
+          sessionId = resumeId;
+        } else {
+          const result = await send('session/new', {
+            cwd: context.workspacePath,
+            mcpServers: [],
+          }) as { sessionId?: string };
+          if (!result?.sessionId) {
+            throw new Error('ACP session/new did not return sessionId');
+          }
+          sessionId = result.sessionId;
         }
+
+        context.onSessionCreated?.(sessionId);
 
         const stateRef = context.agentStateRef;
         const sendPromptRaw = async (text: string): Promise<void> => {

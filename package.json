@@ -46,6 +46,7 @@
     "vitest": "^2.1.4"
   },
   "dependencies": {
+    "kysely": "^0.28.14",
     "unique-names-generator": "^4.7.1"
   }
 }

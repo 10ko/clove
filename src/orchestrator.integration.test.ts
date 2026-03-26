@@ -57,7 +57,7 @@ describe('Orchestrator (integration)', () => {
 
   afterEach(async () => {
     for (const a of orchestrator.listAgents()) {
-      await orchestrator.stopAgent(a.agentId);
+      await orchestrator.deleteAgent(a.agentId);
     }
     await fs.rm(tmpRepo, { recursive: true, force: true });
   });
@@ -87,7 +87,7 @@ describe('Orchestrator (integration)', () => {
     expect(list.some((a) => a.agentId === agentId)).toBe(true);
   });
 
-  it('sendInput and stopAgent work', async () => {
+  it('pauseAgent keeps workspace, deleteAgent removes it', async () => {
     const agentId = 'int-test-2';
     await orchestrator.startAgent(
       agentId,
@@ -98,9 +98,15 @@ describe('Orchestrator (integration)', () => {
     );
 
     await orchestrator.sendInput(agentId, 'user input here');
-    await orchestrator.stopAgent(agentId);
+    await orchestrator.pauseAgent(agentId);
 
-    const list = orchestrator.listAgents();
-    expect(list.some((a) => a.agentId === agentId)).toBe(false);
+    const paused = orchestrator.listAgents();
+    const record = paused.find((a) => a.agentId === agentId);
+    expect(record).toBeDefined();
+    expect(record!.status).toBe('sleeping');
+
+    await orchestrator.deleteAgent(agentId);
+    const after = orchestrator.listAgents();
+    expect(after.some((a) => a.agentId === agentId)).toBe(false);
   });
 });

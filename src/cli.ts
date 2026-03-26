@@ -13,7 +13,7 @@ import http from 'node:http';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { HttpCloveApi } from './httpCloveApi.js';
-import { ensureDaemonBaseUrl, runDaemonListen, clearDaemonState, readDaemonState, stopDaemon } from './daemon.js';
+import { ensureDaemonBaseUrl, runDaemonListen, readDaemonState, stopDaemon } from './daemon.js';
 import { uniqueNamesGenerator, adjectives, animals } from 'unique-names-generator';
 
 function generateMemorableId(): string {
@@ -34,7 +34,9 @@ USAGE
 
 COMMANDS
   start       Start an agent (repo required; prompt optional)
-  stop        Stop a running agent
+  stop        Pause a running agent (keep workspace)
+  resume      Resume a sleeping agent
+  delete      Delete agent and remove workspace
   stream      Stream logs and agent output
   send-input  Send input to a running agent
   list        List agents and status
@@ -53,17 +55,21 @@ EXAMPLES
   clove                                     # interactive shell (starts daemon if needed)
   clove start --repo . --prompt "Add tests" # one-shot command
   clove list
+  clove stop <agent-id>                     # pause agent, keep workspace
+  clove resume <agent-id>                   # resume sleeping agent
+  clove delete <agent-id>                   # remove workspace + worktree
   clove dashboard
-  clove daemon                              # ensure daemon is running
   clove daemon --foreground                 # run daemon in foreground (for dev)
 `.trim();
 
 const SHELL_HELP = `
   start --repo <path> [--agent-id <id>] [--branch <name>] [--prompt "<text>"] [--runtime local] [--agent cursor]
-  list                                    List running agents
+  list                                    List all agents (running + sleeping)
   stream <agent-id>                       Stream agent output (Ctrl+C to exit stream)
   send-input <agent-id> "<input>"         Send input to agent
-  stop <agent-id>                         Stop an agent
+  stop <agent-id>                         Pause agent (keep workspace)
+  resume <agent-id> [--prompt "<text>"]   Resume sleeping agent
+  delete <agent-id>                       Delete agent + workspace
   dashboard                               Open dashboard in browser
   help                                    Show help
   exit, quit                              Exit shell
@@ -306,9 +312,36 @@ async function runCommand(
     return false;
   }
 
-  if (command === 'stop') {
-    await api.stopAgent(agentId);
-    console.log(`Stopped agent ${agentId}`);
+  if (command === 'stop' || command === 'pause') {
+    await api.pauseAgent(agentId);
+    console.log(`Paused agent ${agentId} (workspace kept)`);
+    return false;
+  }
+
+  if (command === 'resume') {
+    const prompt = getArg(rest.slice(1), '--prompt') ?? '';
+    await api.resumeAgent(agentId, prompt || undefined);
+    console.log(`Resumed agent ${agentId}`);
+    return false;
+  }
+
+  if (command === 'delete') {
+    const skipConfirm = rest.includes('--yes') || rest.includes('-y');
+    if (!skipConfirm) {
+      const answer = await new Promise<string>((resolve) => {
+        const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+        rl.question(
+          `This will permanently delete the worktree for ${agentId}. Continue? [y/N] `,
+          (ans) => { rl.close(); resolve(ans.trim().toLowerCase()); }
+        );
+      });
+      if (answer !== 'y' && answer !== 'yes') {
+        console.log('Cancelled.');
+        return false;
+      }
+    }
+    await api.deleteAgent(agentId);
+    console.log(`Deleted agent ${agentId} (workspace removed)`);
     return false;
   }
 
@@ -466,12 +499,11 @@ async function main(): Promise<void> {
 
     if (rawArgs.includes('--foreground') || rawArgs.includes('--listen')) {
       await runDaemonListen();
-      process.on('SIGINT', () => { clearDaemonState(); process.exit(0); });
-      process.on('SIGTERM', () => { clearDaemonState(); process.exit(0); });
       await new Promise<void>(() => {});
       return;
     }
 
+    // `daemon start` or bare `daemon`: ensure daemon is running in background
     const base = await ensureDaemonBaseUrl();
     console.log(`Clove daemon running at ${base}`);
     process.exit(0);
@@ -496,7 +528,7 @@ async function main(): Promise<void> {
   }
 
   // One-shot commands: connect to daemon and run
-  const knownCommands = ['start', 'stop', 'stream', 'send-input', 'list', 'help'];
+  const knownCommands = ['start', 'stop', 'pause', 'resume', 'delete', 'stream', 'send-input', 'list', 'help'];
   const [command, ...rest] = rawArgs;
   if (!knownCommands.includes(command)) {
     console.error(`clove: unknown command "${command}"`);

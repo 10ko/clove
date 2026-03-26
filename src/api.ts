@@ -18,7 +18,6 @@ export interface StartAgentParams {
   runtimeKey: string;
   pluginKey: string;
   prompt: string;
-  /** Optional branch segment (branch will be clove/<branchName>). Defaults to agentId. */
   branchName?: string;
 }
 
@@ -29,10 +28,6 @@ export interface StartAgentResult {
   repoPath: string;
 }
 
-/**
- * Unified API: wraps an Orchestrator and exposes stream as StreamEnvelope
- * so CLI and HTTP (SSE) can share the same contract.
- */
 export class CloveApi {
   constructor(private readonly orchestrator: Orchestrator) {}
 
@@ -47,18 +42,27 @@ export class CloveApi {
     );
   }
 
+  async pauseAgent(agentId: AgentId): Promise<void> {
+    return this.orchestrator.pauseAgent(agentId);
+  }
+
+  async resumeAgent(agentId: AgentId, prompt?: string): Promise<void> {
+    return this.orchestrator.resumeAgent(agentId, prompt);
+  }
+
+  async deleteAgent(agentId: AgentId): Promise<void> {
+    return this.orchestrator.deleteAgent(agentId);
+  }
+
+  /** @deprecated Use pauseAgent instead. */
   async stopAgent(agentId: AgentId): Promise<void> {
-    return this.orchestrator.stopAgent(agentId);
+    return this.orchestrator.pauseAgent(agentId);
   }
 
   listAgents(): AgentRecord[] {
     return this.orchestrator.listAgents();
   }
 
-  /**
-   * Stream agent output as envelope format (type + payload).
-   * Types: 'log' (runtime/stderr), 'reasoning' (agent thinking), 'agent' (final answer).
-   */
   async *stream(agentId: AgentId): AsyncIterable<StreamEnvelope> {
     yield* this.orchestrator.streamLogs(agentId);
   }
@@ -67,8 +71,12 @@ export class CloveApi {
     return this.orchestrator.sendInput(agentId, input);
   }
 
-  /** Cancel the current prompt turn (e.g. like Ctrl+C in Cursor). */
   async cancelAgent(agentId: AgentId): Promise<void> {
     return this.orchestrator.cancelAgent(agentId);
+  }
+
+  /** Pause all running agents (used during graceful shutdown). */
+  async pauseAll(): Promise<void> {
+    return this.orchestrator.pauseAll();
   }
 }

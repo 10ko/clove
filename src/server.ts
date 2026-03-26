@@ -1,5 +1,5 @@
 /**
- * HTTP server exposing the unified API (Phase 3) and optional dashboard (Phase 4).
+ * HTTP server exposing the unified API and optional dashboard.
  */
 
 import http from 'node:http';
@@ -11,9 +11,10 @@ import { Orchestrator } from './orchestrator.js';
 import { WorkspaceManager } from './workspaceManager.js';
 import { createLocalRuntime } from './plugins/runtime/local.js';
 import { createCursorAgent } from './plugins/agent/cursor.js';
+import { createDatabase, migrateDatabase } from './db.js';
+import { WorkspaceStore } from './store.js';
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
-// When running as compiled binary, dashboard lives next to the executable
 const execDir = path.dirname(process.execPath);
 const possibleDashboardDirs = [
   path.resolve(serverDir, '../../dashboard/dist'),
@@ -23,7 +24,7 @@ const DASHBOARD_DIR = possibleDashboardDirs.find((d) => fs.existsSync(d)) ?? pos
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
@@ -105,7 +106,7 @@ export function createServer(api: CloveApi): http.Server {
         return;
       }
 
-      // GET /api/info — server cwd (for default repo path in dashboard)
+      // GET /api/info
       if (req.method === 'GET' && base === 'api' && sub === 'info') {
         jsonResponse(res, 200, { cwd: process.cwd() });
         return;
@@ -118,9 +119,32 @@ export function createServer(api: CloveApi): http.Server {
         return;
       }
 
-      // POST /api/agents/:id/stop
+      // POST /api/agents/:id/stop — now means "pause"
       if (req.method === 'POST' && base === 'api' && sub === 'agents' && id && pathParts[3] === 'stop') {
-        await api.stopAgent(id);
+        await api.pauseAgent(id);
+        jsonResponse(res, 200, { ok: true });
+        return;
+      }
+
+      // POST /api/agents/:id/pause
+      if (req.method === 'POST' && base === 'api' && sub === 'agents' && id && pathParts[3] === 'pause') {
+        await api.pauseAgent(id);
+        jsonResponse(res, 200, { ok: true });
+        return;
+      }
+
+      // POST /api/agents/:id/resume
+      if (req.method === 'POST' && base === 'api' && sub === 'agents' && id && pathParts[3] === 'resume') {
+        const body = await parseBody(req);
+        const prompt = body.prompt as string | undefined;
+        await api.resumeAgent(id, prompt);
+        jsonResponse(res, 200, { ok: true });
+        return;
+      }
+
+      // DELETE /api/agents/:id
+      if (req.method === 'DELETE' && base === 'api' && sub === 'agents' && id && !pathParts[3]) {
+        await api.deleteAgent(id);
         jsonResponse(res, 200, { ok: true });
         return;
       }
@@ -138,7 +162,7 @@ export function createServer(api: CloveApi): http.Server {
         return;
       }
 
-      // POST /api/agents/:id/cancel — cancel current prompt turn (e.g. like Ctrl+C)
+      // POST /api/agents/:id/cancel
       if (req.method === 'POST' && base === 'api' && sub === 'agents' && id && pathParts[3] === 'cancel') {
         await api.cancelAgent(id);
         jsonResponse(res, 200, { ok: true });
@@ -161,7 +185,7 @@ export function createServer(api: CloveApi): http.Server {
         return;
       }
 
-      // Dashboard: serve static files from dashboard/dist if present
+      // Dashboard: serve static files
       if (req.method === 'GET' && fs.existsSync(DASHBOARD_DIR)) {
         const filePath = pathParts.filter(Boolean).length > 0 ? path.join(DASHBOARD_DIR, ...pathParts.filter(Boolean)) : path.join(DASHBOARD_DIR, 'index.html');
         const resolved = path.resolve(filePath);
@@ -181,7 +205,6 @@ export function createServer(api: CloveApi): http.Server {
             return;
           }
         }
-        // SPA fallback: serve index.html for any other GET
         const indexHtml = path.join(DASHBOARD_DIR, 'index.html');
         if (fs.existsSync(indexHtml)) {
           res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -203,6 +226,10 @@ export function runServer(
   port: number,
   onListening?: (actualPort: number) => void
 ): { server: http.Server; api: CloveApi } {
+  const db = createDatabase();
+
+  const store = new WorkspaceStore(db);
+
   const orchestrator = new Orchestrator({
     workspaceManager: new WorkspaceManager(),
     runtimes: {
@@ -211,28 +238,44 @@ export function runServer(
     plugins: {
       cursor: () => createCursorAgent(),
     },
+    store,
   });
+
   const api = new CloveApi(orchestrator);
   const server = createServer(api);
+
+  const startup = async (): Promise<void> => {
+    await migrateDatabase(db);
+    await orchestrator.loadFromStore();
+  };
+
   server.listen(port, () => {
     const address = server.address();
     const actualPort =
       typeof address === 'object' && address && 'port' in address
         ? (address as import('node:net').AddressInfo).port
         : port;
-    console.log(`Clove server at http://localhost:${actualPort}`);
-    if (fs.existsSync(DASHBOARD_DIR)) {
-      console.log('  Dashboard: http://localhost:' + actualPort);
-    }
-    console.log('  API:');
-    console.log('  GET  /api/info             — server info (cwd)');
-    console.log('  GET  /api/agents           — list agents');
-    console.log('  POST /api/agents/start     — start (body: { repoPath, prompt, agentId? })');
-    console.log('  POST /api/agents/:id/stop   — stop agent');
-    console.log('  POST /api/agents/:id/cancel — cancel current task (like Ctrl+C)');
-    console.log('  POST /api/agents/:id/input — send input (body: { input })');
-    console.log('  GET  /api/agents/:id/stream — SSE stream');
-    onListening?.(actualPort);
+
+    startup().then(() => {
+      console.log(`Clove server at http://localhost:${actualPort}`);
+      if (fs.existsSync(DASHBOARD_DIR)) {
+        console.log('  Dashboard: http://localhost:' + actualPort);
+      }
+      console.log('  API:');
+      console.log('  GET  /api/info              — server info (cwd)');
+      console.log('  GET  /api/agents            — list agents');
+      console.log('  POST /api/agents/start      — start agent');
+      console.log('  POST /api/agents/:id/pause  — pause (stop process, keep workspace)');
+      console.log('  POST /api/agents/:id/resume — resume sleeping agent');
+      console.log('  DELETE /api/agents/:id       — delete (stop + remove workspace)');
+      console.log('  POST /api/agents/:id/cancel — cancel current task');
+      console.log('  POST /api/agents/:id/input  — send input');
+      console.log('  GET  /api/agents/:id/stream — SSE stream');
+      onListening?.(actualPort);
+    }).catch((err) => {
+      console.error('clove: failed to initialize database:', err);
+      process.exit(1);
+    });
   });
   return { server, api };
 }

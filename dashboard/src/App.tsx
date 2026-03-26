@@ -62,8 +62,8 @@ export default function App() {
       <main style={mainStyle}>
         {error && (
           <div style={errorStyle}>
-            <strong>API unreachable.</strong> Start the server in another terminal:
-            <code style={codeBlockStyle}> clove serve</code>
+            <strong>API unreachable.</strong> Start the daemon:
+            <code style={codeBlockStyle}> clove</code>
             <br />
             <span style={errorDetailStyle}>{error}</span>
           </div>
@@ -98,10 +98,7 @@ export default function App() {
             agentId={selectedId}
             agent={agents.find((a) => a.agentId === selectedId) ?? null}
             onClose={() => setSelectedId(null)}
-            onStop={() => {
-              setSelectedId(null);
-              refresh();
-            }}
+            onAgentChanged={refresh}
           />
         )}
       </main>

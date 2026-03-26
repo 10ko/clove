@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { cancelAgent, sendInput, stopAgent, streamAgentUrl, vscodeUrlForPath } from './api';
+import { cancelAgent, sendInput, pauseAgent, resumeAgent, deleteAgent, streamAgentUrl, vscodeUrlForPath } from './api';
 import type { AgentRecord, StreamEnvelope } from './api';
 import { avatarDataUri } from './avatar';
 import { ConfirmModal } from './ConfirmModal';
@@ -9,18 +9,21 @@ interface Props {
   agentId: string;
   agent: AgentRecord | null;
   onClose: () => void;
-  onStop?: () => void;
+  onAgentChanged?: () => void;
 }
 
 type StreamSegment = { type: StreamEnvelope['type']; payload: string };
 
-export function AgentDetail({ agentId, agent, onClose, onStop }: Props) {
+export function AgentDetail({ agentId, agent, onClose, onAgentChanged }: Props) {
   const workspacePath = agent?.workspacePath ?? '';
+  const isSleeping = agent?.status === 'sleeping';
   const [segments, setSegments] = useState<StreamSegment[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [sending, setSending] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
-  const [showStopConfirm, setShowStopConfirm] = useState(false);
+  const [showPauseConfirm, setShowPauseConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [resuming, setResuming] = useState(false);
   const [pathJustCopied, setPathJustCopied] = useState(false);
   const outputEndRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -45,6 +48,11 @@ export function AgentDetail({ agentId, agent, onClose, onStop }: Props) {
   }, [inputValue]);
 
   useEffect(() => {
+    if (isSleeping) {
+      setSegments([]);
+      setStreamError(null);
+      return;
+    }
     setSegments([]);
     setStreamError(null);
     const url = streamAgentUrl(agentId);
@@ -69,7 +77,7 @@ export function AgentDetail({ agentId, agent, onClose, onStop }: Props) {
       es.close();
       eventSourceRef.current = null;
     };
-  }, [agentId]);
+  }, [agentId, isSleeping]);
 
   useEffect(() => {
     outputEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -107,14 +115,32 @@ export function AgentDetail({ agentId, agent, onClose, onStop }: Props) {
     }
   }
 
-  function handleStopClick() {
-    setShowStopConfirm(true);
+  async function handlePauseConfirm() {
+    try {
+      await pauseAgent(agentId);
+      onAgentChanged?.();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    }
   }
 
-  async function handleStopConfirm() {
+  async function handleResume() {
+    setResuming(true);
     try {
-      await stopAgent(agentId);
-      onStop?.();
+      await resumeAgent(agentId);
+      onAgentChanged?.();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setResuming(false);
+    }
+  }
+
+  async function handleDeleteConfirm() {
+    try {
+      await deleteAgent(agentId);
+      onClose();
+      onAgentChanged?.();
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
     }
@@ -212,15 +238,27 @@ export function AgentDetail({ agentId, agent, onClose, onStop }: Props) {
               </a>
             )}
           </div>
-          <button type="button" onClick={handleStopClick} style={stopBtnStyle} title="Stop agent">
-            Stop agent
-          </button>
+          <div style={actionsLeftStyle}>
+            {isSleeping ? (
+              <button type="button" onClick={handleResume} disabled={resuming} style={resumeBtnStyle} title="Resume agent">
+                {resuming ? 'Resuming...' : 'Resume'}
+              </button>
+            ) : (
+              <button type="button" onClick={() => setShowPauseConfirm(true)} style={pauseBtnStyle} title="Pause agent (keep workspace)">
+                Pause
+              </button>
+            )}
+            <button type="button" onClick={() => setShowDeleteConfirm(true)} style={deleteBtnStyle} title="Delete agent and workspace">
+              Delete
+            </button>
+          </div>
         </div>
 
         <div style={streamSectionStyle}>
-          <div style={streamLabelStyle}>Stream</div>
+          <div style={streamLabelStyle}>{isSleeping ? 'Status' : 'Stream'}</div>
           <pre style={preStyle}>
-            {segments.length === 0 && '(waiting for output…)'}
+            {isSleeping && segments.length === 0 && 'Agent is sleeping. Click "Resume" to continue.'}
+            {!isSleeping && segments.length === 0 && '(waiting for output…)'}
             {segments.map((seg, i) => (
               <span key={i} style={segmentStyle(seg.type)} title={seg.type === 'reasoning' ? 'Reasoning' : seg.type === 'log' ? 'Log' : undefined}>
                 {seg.payload}
@@ -228,47 +266,59 @@ export function AgentDetail({ agentId, agent, onClose, onStop }: Props) {
             ))}
             <div ref={outputEndRef} />
           </pre>
-          {streamError && (
+          {streamError && !isSleeping && (
             <div style={streamErrorStyle}>{streamError}</div>
           )}
         </div>
 
-        <form onSubmit={handleSendInput} style={formStyle} ref={(el) => { formRef.current = el; }}>
-          <div style={inputRowStyle}>
-            <textarea
-              ref={textareaRef}
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  if (inputValue.trim()) formRef.current?.requestSubmit();
-                }
-              }}
-              placeholder={agent?.agentState === 'busy' ? 'Agent is working…' : 'Type to send to agent… (Enter to send, Shift+Enter for new line)'}
-              disabled={sending || agent?.agentState === 'busy'}
-              rows={1}
-              style={textareaStyle}
-            />
-            {agent?.agentState === 'busy' ? (
-              <button type="button" onClick={handleCancelTask} style={cancelBtnStyle} title="Cancel current task (Cmd+. or Ctrl+.)">
-                Cancel
-              </button>
-            ) : (
-              <button type="submit" disabled={sending || !inputValue.trim()}>
-                {sending ? 'Sending…' : 'Send'}
-              </button>
-            )}
-          </div>
-        </form>
+        {!isSleeping && (
+          <form onSubmit={handleSendInput} style={formStyle} ref={(el) => { formRef.current = el; }}>
+            <div style={inputRowStyle}>
+              <textarea
+                ref={textareaRef}
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (inputValue.trim()) formRef.current?.requestSubmit();
+                  }
+                }}
+                placeholder={agent?.agentState === 'busy' ? 'Agent is working…' : 'Type to send to agent… (Enter to send, Shift+Enter for new line)'}
+                disabled={sending || agent?.agentState === 'busy'}
+                rows={1}
+                style={textareaStyle}
+              />
+              {agent?.agentState === 'busy' ? (
+                <button type="button" onClick={handleCancelTask} style={cancelBtnStyle} title="Cancel current task (Cmd+. or Ctrl+.)">
+                  Cancel
+                </button>
+              ) : (
+                <button type="submit" disabled={sending || !inputValue.trim()}>
+                  {sending ? 'Sending…' : 'Send'}
+                </button>
+              )}
+            </div>
+          </form>
+        )}
 
         <ConfirmModal
-          isOpen={showStopConfirm}
-          onClose={() => setShowStopConfirm(false)}
-          onConfirm={handleStopConfirm}
-          title="Stop agent?"
-          message="The agent's workspace folder will be removed and its branch deleted. Any uncommitted changes will be lost."
-          confirmLabel="Stop agent"
+          isOpen={showPauseConfirm}
+          onClose={() => setShowPauseConfirm(false)}
+          onConfirm={handlePauseConfirm}
+          title="Pause agent?"
+          message="The agent process will stop but the workspace and all changes will be preserved. You can resume anytime."
+          confirmLabel="Pause"
+          cancelLabel="Cancel"
+          variant="danger"
+        />
+        <ConfirmModal
+          isOpen={showDeleteConfirm}
+          onClose={() => setShowDeleteConfirm(false)}
+          onConfirm={handleDeleteConfirm}
+          title="Delete workspace?"
+          message="This will permanently delete the worktree and branch. Any uncommitted changes will be lost. This cannot be undone."
+          confirmLabel="Delete"
           cancelLabel="Cancel"
           variant="danger"
         />
@@ -443,13 +493,33 @@ const actionsLeftStyle: React.CSSProperties = {
   gap: '0.5rem',
 };
 
-const stopBtnStyle: React.CSSProperties = {
+const pauseBtnStyle: React.CSSProperties = {
   padding: '0.25rem 0.5rem',
   fontSize: '0.8125rem',
   borderRadius: '0.25rem',
   border: '1px solid #334155',
   background: 'transparent',
   color: '#94a3b8',
+  cursor: 'pointer',
+};
+
+const resumeBtnStyle: React.CSSProperties = {
+  padding: '0.25rem 0.5rem',
+  fontSize: '0.8125rem',
+  borderRadius: '0.25rem',
+  border: '1px solid rgba(34, 197, 94, 0.5)',
+  background: 'rgba(34, 197, 94, 0.15)',
+  color: '#22c55e',
+  cursor: 'pointer',
+};
+
+const deleteBtnStyle: React.CSSProperties = {
+  padding: '0.25rem 0.5rem',
+  fontSize: '0.8125rem',
+  borderRadius: '0.25rem',
+  border: '1px solid rgba(239, 68, 68, 0.4)',
+  background: 'transparent',
+  color: '#fca5a5',
   cursor: 'pointer',
 };
 
