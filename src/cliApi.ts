@@ -12,8 +12,6 @@ export interface CliApi {
   pauseAgent(agentId: AgentId): Promise<void>;
   resumeAgent(agentId: AgentId, prompt?: string): Promise<void>;
   deleteAgent(agentId: AgentId): Promise<void>;
-  /** @deprecated Use pauseAgent */
-  stopAgent(agentId: AgentId): Promise<void>;
   stream(agentId: AgentId): AsyncIterable<StreamEnvelope>;
   sendInput(agentId: AgentId, input: string): Promise<void>;
 }

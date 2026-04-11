@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { runServer } from './server.js';
 import type { CloveApi } from './api.js';
 
-export interface DaemonState {
+interface DaemonState {
   pid: number;
   port: number;
   startedAt: string;
@@ -38,7 +38,7 @@ export function readDaemonState(): DaemonState | null {
   }
 }
 
-export function writeDaemonState(port: number): void {
+function writeDaemonState(port: number): void {
   fs.mkdirSync(CLOVE_DIR, { recursive: true });
   const state: DaemonState = {
     pid: process.pid,
@@ -48,7 +48,7 @@ export function writeDaemonState(port: number): void {
   fs.writeFileSync(DAEMON_FILE, JSON.stringify(state, null, 2), 'utf-8');
 }
 
-export function clearDaemonState(): void {
+function clearDaemonState(): void {
   try {
     fs.unlinkSync(DAEMON_FILE);
   } catch {
@@ -78,7 +78,7 @@ export async function healthCheck(baseUrl: string): Promise<boolean> {
 }
 
 /** Start HTTP server: prefer 3000, fall back to OS-assigned free port. */
-export function startDaemonServer(
+function startDaemonServer(
   onListening: (port: number, api: CloveApi) => void
 ): void {
   let usedFallback = false;

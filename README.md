@@ -21,7 +21,7 @@ bun run dev          # starts daemon in foreground (shows logs)
 Then in a second terminal:
 
 ```bash
-bun run dev:shell    # interactive shell (connects to the daemon)
+bun run dev:cli      # interactive shell (connects to the daemon)
 ```
 
 In the shell:
@@ -62,7 +62,7 @@ bun install
 bun run dev
 
 # Terminal 2: interactive shell
-bun run dev:shell
+bun run dev:cli
 
 # Or just run the CLI directly (auto-starts daemon in background)
 bun run src/cli.ts
@@ -72,10 +72,10 @@ bun run src/cli.ts
 
 ```
 start --repo <path> [--prompt "<text>"] [--agent cursor] [--agent-id <id>] [--branch <name>]
-list                                    List running agents
+list                                    List agents (running and sleeping)
 stream <agent-id>                       Stream agent output (Ctrl+C to leave)
 send-input <agent-id> "<input>"         Send input to agent
-stop <agent-id>                         Stop an agent
+stop <agent-id>                         Pause agent (keeps workspace; use delete to remove)
 dashboard                               Open dashboard in browser
 help                                    Show help
 exit, quit                              Exit shell
@@ -113,11 +113,10 @@ Run `dashboard` from the shell or `clove dashboard` from the command line. The d
 
 ## Commit and PR (worktrees)
 
-With the **local** runtime, each agent uses a git worktree on a branch like `clove/agent-123`. You commit and open a PR yourself: go to the agent's workspace (e.g. via the dashboard "VS Code" button), commit, push the branch, then open a PR. **Push before stopping the agent** — stopping removes the worktree and deletes the local branch.
+With the **local** runtime, each agent uses a git worktree on a branch like `clove/agent-123`. You commit and open a PR yourself: go to the agent's workspace (e.g. via the dashboard "VS Code" button), commit, push the branch, then open a PR. **Push before deleting the agent** — delete removes the worktree and deletes the local branch. Pausing only stops the process.
 
 ## What's next
 
-- **Persistence & recovery** — Persist agent list and workspace metadata so after a restart you can see what was running and recover or clean up workspaces.
 - **Config file** — Defaults for runtime, agent, paths.
 - **Desktop app** — Electron/Tauri wrapper for the dashboard.
 - **Hosted control plane** — SaaS version of the daemon.

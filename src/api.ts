@@ -10,8 +10,6 @@ import type {
 } from './types.js';
 import type { AgentRecord, Orchestrator } from './orchestrator.js';
 
-export type { AgentRecord, StreamEnvelope };
-
 export interface StartAgentParams {
   agentId: string;
   sourceRepo: SourceRepo;
@@ -52,11 +50,6 @@ export class CloveApi {
 
   async deleteAgent(agentId: AgentId): Promise<void> {
     return this.orchestrator.deleteAgent(agentId);
-  }
-
-  /** @deprecated Use pauseAgent instead. */
-  async stopAgent(agentId: AgentId): Promise<void> {
-    return this.orchestrator.pauseAgent(agentId);
   }
 
   listAgents(): AgentRecord[] {

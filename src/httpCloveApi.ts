@@ -73,11 +73,6 @@ export class HttpCloveApi implements CliApi {
     if (!res.ok) throw new Error(await res.text());
   }
 
-  /** @deprecated Use pauseAgent. Kept for backward compat. */
-  async stopAgent(agentId: AgentId): Promise<void> {
-    return this.pauseAgent(agentId);
-  }
-
   async *stream(agentId: AgentId): AsyncIterable<StreamEnvelope> {
     const res = await fetch(this.url(`/api/agents/${encodeURIComponent(agentId)}/stream`));
     if (!res.ok) throw new Error(await res.text());

@@ -1,7 +1,6 @@
+const rawBase = import.meta.env.VITE_CLOVE_API_URL;
 const API_BASE =
-  (import.meta as any).env?.VITE_CLOVE_API_URL && typeof (import.meta as any).env.VITE_CLOVE_API_URL === 'string'
-    ? ((import.meta as any).env.VITE_CLOVE_API_URL as string)
-    : '/api';
+  typeof rawBase === 'string' && rawBase.trim() !== '' ? rawBase.trim().replace(/\/$/, '') : '/api';
 
 export interface AgentRecord {
   agentId: string;
@@ -14,11 +13,11 @@ export interface AgentRecord {
   agentState?: 'busy' | 'waiting';
 }
 
-export interface ListAgentsResponse {
+interface ListAgentsResponse {
   agents: AgentRecord[];
 }
 
-export interface StartAgentBody {
+interface StartAgentBody {
   repoPath?: string;
   repoUrl?: string;
   /** Optional: initial prompt for the agent. Omit to start and send later via send-input. */
@@ -31,7 +30,7 @@ export interface StartAgentBody {
   pluginKey?: string;
 }
 
-export interface StartAgentResponse {
+interface StartAgentResponse {
   path: string;
   branch: string;
   mainRepoRoot?: string;
@@ -44,7 +43,7 @@ export type StreamEnvelope =
   | { type: 'agent'; payload: string }
   | { type: 'user'; payload: string };
 
-export interface ServerInfo {
+interface ServerInfo {
   cwd: string;
 }
 
@@ -95,11 +94,6 @@ export async function deleteAgent(agentId: string): Promise<void> {
     method: 'DELETE',
   });
   if (!res.ok) throw new Error(await res.text());
-}
-
-/** @deprecated Use pauseAgent */
-export async function stopAgent(agentId: string): Promise<void> {
-  return pauseAgent(agentId);
 }
 
 export async function cancelAgent(agentId: string): Promise<void> {

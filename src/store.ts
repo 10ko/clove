@@ -6,7 +6,7 @@ import type { Kysely } from 'kysely';
 import type { DatabaseSchema, WorkspaceRow } from './db.js';
 import type { SourceRepo } from './types.js';
 
-export interface InsertWorkspace {
+interface InsertWorkspace {
   agentId: string;
   status: 'running' | 'sleeping';
   workspacePath: string;

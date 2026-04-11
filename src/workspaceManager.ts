@@ -239,30 +239,3 @@ export class WorkspaceManager {
     return Array.from(this.workspaces.keys());
   }
 }
-
-/**
- * Remove a local worktree by path and main repo root (for cross-process stop when
- * the agent was started in another process and we only have persisted state).
- */
-export function removeWorktreeByPath(
-  workspacePath: string,
-  mainRepoRoot: string,
-  branch: string
-): void {
-  try {
-    execSync(`git worktree remove --force "${workspacePath}"`, {
-      cwd: mainRepoRoot,
-      stdio: 'pipe',
-    });
-  } catch {
-    // Worktree may already be removed
-  }
-  try {
-    execSync(`git branch -D "${branch}"`, {
-      cwd: mainRepoRoot,
-      stdio: 'pipe',
-    });
-  } catch {
-    // Branch may already be deleted
-  }
-}
