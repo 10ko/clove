@@ -1,124 +1,132 @@
 # Clove
 
-Orchestrate coding agents with a CLI and dashboard.
+Run multiple coding agents like a tiny mission control.
 
-## Prerequisites
+- `clove` gives you a fast REPL for launching and steering agents.
+- `clove dashboard` gives you a live control view in the browser.
+- Start any command and Clove spins up the daemon automatically.
 
-- **[Bun](https://bun.sh)** — `curl -fsSL https://bun.sh/install | bash`
-- **Cursor CLI** — for the default agent: `curl https://cursor.com/install -fsS | bash` (then `agent --version` to confirm)
-- **Git** — a repo with at least one commit to run agents against
+## Install
 
-Binary (macOS ARM): no Bun needed; download the release zip or use Homebrew (see below).
-
-## Quick start
+### Option A: Homebrew (macOS ARM)
 
 ```bash
-git clone https://github.com/10ko/clove.git && cd clove
+brew tap 10ko/clove
+brew install clove
+```
+
+### Option B: Download binary (macOS ARM)
+
+Download from [Releases](https://github.com/10ko/clove/releases), unzip, then run:
+
+```bash
+./clove-macos-arm64
+```
+
+### Option C: Run from source
+
+Prerequisites:
+
+- **[Bun](https://bun.sh)**
+- **Cursor CLI** (`agent --version` to verify)
+- **Git** repo with at least one commit
+
+```bash
+git clone https://github.com/10ko/clove.git
+cd clove
 bun install
-bun run dev          # starts daemon in foreground (shows logs)
+bun run src/cli.ts
 ```
 
-Then in a second terminal:
+## First 60 Seconds
+
+Open the REPL:
 
 ```bash
-bun run dev:cli      # interactive shell (connects to the daemon)
+clove
 ```
 
-In the shell:
+In the `clove>` prompt:
 
-```
-start --repo /path/to/your/repo --prompt "List the main files in this project"
+```bash
+start --repo . --prompt "Add tests for the parser"
 list
 stream <agent-id>
 ```
 
-## Architecture
+Press `Ctrl+C` to stop streaming and return to the prompt.
 
-Clove runs as a **daemon** — a background HTTP server that manages agents. The CLI and dashboard are clients that talk to the daemon over HTTP.
+## Most Common Commands
 
-- **Auto-start:** Running any `clove` command (including the interactive shell) will automatically start the daemon in the background if none is running.
-- **State file:** `~/.clove/daemon.json` stores the daemon's PID and port.
-- **Port selection:** Prefers port 3000; if taken, picks a free port automatically.
+### In the REPL (`clove>`)
 
-| Command | What it does |
-|---|---|
-| `clove` | Interactive shell (starts daemon if needed) |
-| `clove daemon` | Ensure daemon is running, print its URL |
-| `clove daemon --foreground` | Run daemon in foreground (for development) |
-| `clove list` | One-shot: list agents |
-| `clove start --repo . --prompt "..."` | One-shot: start an agent |
-| `clove dashboard` | Open dashboard in browser |
+- `start --repo <path> [--agent-id <id>] [--branch <name>] [--prompt "<text>"] [--runtime local] [--agent cursor]`
+- `list`
+- `stream <agent-id>`
+- `send-input <agent-id> "<input>"`
+- `stop <agent-id>` / `pause <agent-id>`
+- `resume <agent-id>`
+- `delete <agent-id>`
+- `dashboard`
+- `help` / `exit` / `quit`
 
-**Environment variables:**
+### One-shot mode (no REPL)
 
-- `CLOVE_API_URL=http://localhost:PORT` — force the CLI to connect to a specific daemon URL.
+```bash
+clove start --repo . --prompt "Refactor CLI help generation"
+clove list
+clove stream <agent-id>
+clove stop <agent-id>
+clove resume <agent-id>
+clove delete <agent-id>
+clove dashboard
+```
 
-## Development
+Use `clove --help` for full command help.
+
+## Daemon Commands
+
+```bash
+clove daemon                  # ensure daemon is running and print URL
+clove daemon status           # show PID, port, and health
+clove daemon stop             # stop background daemon
+clove daemon --foreground     # run daemon in foreground (dev mode)
+```
+
+Daemon state is stored in `~/.clove/daemon.json`.
+
+## Dashboard
+
+- Launch from REPL: `dashboard`
+- Launch as one-shot: `clove dashboard`
+
+The dashboard connects to the currently running daemon automatically.
+
+## Agent Worktrees (important)
+
+With the local runtime, each agent runs in its own git worktree and branch (for example `clove/agent-123`).
+
+- Pause with `stop` / `pause` to keep workspace.
+- Resume with `resume`.
+- Delete with `delete` to remove workspace and local branch.
+- Push your branch before deleting an agent if you want to keep remote history.
+
+## Development (contributors)
 
 ```bash
 bun install
 
-# Terminal 1: daemon in foreground (see all logs)
+# Terminal 1: daemon logs in foreground
 bun run dev
 
-# Terminal 2: interactive shell
+# Terminal 2: interactive CLI
 bun run dev:cli
-
-# Or just run the CLI directly (auto-starts daemon in background)
-bun run src/cli.ts
 ```
 
-### Shell commands
+Useful scripts:
 
-```
-start --repo <path> [--prompt "<text>"] [--agent cursor] [--agent-id <id>] [--branch <name>]
-list                                    List agents (running and sleeping)
-stream <agent-id>                       Stream agent output (Ctrl+C to leave)
-send-input <agent-id> "<input>"         Send input to agent
-stop <agent-id>                         Pause agent (keeps workspace; use delete to remove)
-dashboard                               Open dashboard in browser
-help                                    Show help
-exit, quit                              Exit shell
-```
-
-## Install (macOS ARM binary)
-
-**Homebrew:**
-
-```bash
-brew tap 10ko/clove && brew install clove
-```
-
-**Or download manually** from [Releases](https://github.com/10ko/clove/releases), unzip, and run:
-
-```bash
-./clove-macos-arm64          # interactive shell (starts daemon automatically)
-./clove-macos-arm64 list
-./clove-macos-arm64 dashboard
-```
-
-No Bun required — the binary is self-contained.
-
-## Build binary (macOS ARM)
-
-```bash
-bun run build:binary
-```
-
-Produces `dist/clove-macos-arm64` and `dist/clove-macos-arm64.zip`. Upload the zip to a GitHub Release; the update-homebrew-tap workflow updates the Homebrew formula.
-
-## Dashboard
-
-Run `dashboard` from the shell or `clove dashboard` from the command line. The dashboard connects to the running daemon automatically.
-
-## Commit and PR (worktrees)
-
-With the **local** runtime, each agent uses a git worktree on a branch like `clove/agent-123`. You commit and open a PR yourself: go to the agent's workspace (e.g. via the dashboard "VS Code" button), commit, push the branch, then open a PR. **Push before deleting the agent** — delete removes the worktree and deletes the local branch. Pausing only stops the process.
-
-## What's next
-
-- **Config file** — Defaults for runtime, agent, paths.
-- **Desktop app** — Electron/Tauri wrapper for the dashboard.
-- **Hosted control plane** — SaaS version of the daemon.
-
-The plugin system is in place: add runtimes and agents by implementing the interfaces in `src/types.ts` and registering them in `src/server.ts`.
+- `bun run build`
+- `bun run lint`
+- `bun run test`
+- `bun run dashboard:dev`
+- `bun run build:binary` (outputs `dist/clove-macos-arm64` and `dist/clove-macos-arm64.zip`)
