@@ -67,7 +67,7 @@ if (!currentMatch) {
 }
 if (input === "major" || input === "minor" || input === "patch") {
   if (currentMatch[4]) {
-    console.error(`Cannot bump '${input}' from prerelease version ${pkg.version}. Use explicit version.`);
+    console.error(`Cannot bump ${input} from prerelease version ${pkg.version}. Use explicit version.`);
     process.exit(1);
   }
   let major = Number(currentMatch[1]);
