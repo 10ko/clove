@@ -1,6 +1,6 @@
 {
   "name": "clove",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "Orchestrator for running multiple AI coding agents with streaming and interactive input",
   "type": "module",
   "main": "dist/index.js",
