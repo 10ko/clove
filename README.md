@@ -130,3 +130,4 @@ Useful scripts:
 - `bun run test`
 - `bun run dashboard:dev`
 - `bun run build:binary` (outputs `dist/clove-macos-arm64` and `dist/clove-macos-arm64.zip`)
+- `bun run release -- <version|major|minor|patch>` (bumps `package.json`, tags, pushes, creates GitHub release)

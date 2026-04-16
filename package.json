@@ -13,6 +13,7 @@
     "dev:cli": "bun run src/cli.ts",
     "start": "bun run bin/clove.js",
     "build:binary": "bun run build && bun run dashboard:build && bun build src/cli.ts --compile --outfile dist/clove-macos-arm64 && mkdir -p dist/dashboard/dist && cp -r dashboard/dist/. dist/dashboard/dist/ && (uname -s | grep -q Darwin && (codesign -s - --force dist/clove-macos-arm64 && xattr -cr dist/clove-macos-arm64) || true) && ./scripts/zip-for-release.sh",
+    "release": "./scripts/release.sh",
     "sign:macos": "./scripts/sign-and-notarize-macos.sh",
     "lint": "eslint src dashboard/src",
     "lint:fix": "eslint src dashboard/src --fix",
