@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# Create clove-macos-arm64.zip from dist/ for uploading to a GitHub Release.
-# Run after: bun run build:binary
-# Then create a release, upload the zip, and the update-homebrew-tap workflow will update the formula.
-
 set -e
 
 DIST="dist"
@@ -14,8 +10,7 @@ if [[ ! -f "$DIST/clove-macos-arm64" ]]; then
 fi
 
 cd "$DIST"
-zip -q -r "$ZIP_NAME" clove-macos-arm64 dashboard
+zip -q -r "$ZIP_NAME" clove-macos-arm64
 cd - >/dev/null
 
 echo "Created $DIST/$ZIP_NAME"
-echo "Upload it to your GitHub Release, then the Homebrew tap will be updated automatically (or run the update-homebrew-tap workflow)."

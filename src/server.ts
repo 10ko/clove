@@ -14,14 +14,35 @@ import { createCursorAgent } from './plugins/agent/cursor.js';
 import { createDatabase, migrateDatabase } from './db.js';
 import { WorkspaceStore } from './store.js';
 import { isCompiledBinary, compiledInstallLibexecDir } from './cli/utils.js';
+import { extractEmbeddedDashboardDistDir } from './embedded-dashboard.js';
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const execDir = isCompiledBinary() ? compiledInstallLibexecDir() : path.dirname(process.execPath);
-const possibleDashboardDirs = [
-  path.resolve(serverDir, '../../dashboard/dist'),
-  path.join(execDir, 'dashboard', 'dist'),
-];
-const DASHBOARD_DIR = possibleDashboardDirs.find((d) => fs.existsSync(d)) ?? possibleDashboardDirs[0];
+
+function resolveDashboardDir(): string | null {
+  if (isCompiledBinary()) {
+    try {
+      const embedded = extractEmbeddedDashboardDistDir();
+      if (embedded != null) {
+        return embedded;
+      }
+    } catch (err) {
+      console.error('[clove] embedded dashboard failed:', err);
+    }
+    const disk = path.join(execDir, 'dashboard', 'dist');
+    if (fs.existsSync(disk)) {
+      return disk;
+    }
+    return null;
+  }
+  const possibleDashboardDirs = [
+    path.resolve(serverDir, '../../dashboard/dist'),
+    path.join(execDir, 'dashboard', 'dist'),
+  ];
+  return possibleDashboardDirs.find((d) => fs.existsSync(d)) ?? null;
+}
+
+const DASHBOARD_DIR = resolveDashboardDir();
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -187,7 +208,7 @@ export function createServer(api: CloveApi): http.Server {
       }
 
       // Dashboard: serve static files
-      if (req.method === 'GET' && fs.existsSync(DASHBOARD_DIR)) {
+      if (req.method === 'GET' && DASHBOARD_DIR != null && fs.existsSync(DASHBOARD_DIR)) {
         const filePath = pathParts.filter(Boolean).length > 0 ? path.join(DASHBOARD_DIR, ...pathParts.filter(Boolean)) : path.join(DASHBOARD_DIR, 'index.html');
         const resolved = path.resolve(filePath);
         const relative = path.relative(DASHBOARD_DIR, resolved);
@@ -259,7 +280,7 @@ export function runServer(
 
     startup().then(() => {
       console.log(`Clove server at http://localhost:${actualPort}`);
-      if (fs.existsSync(DASHBOARD_DIR)) {
+      if (DASHBOARD_DIR != null && fs.existsSync(DASHBOARD_DIR)) {
         console.log('  Dashboard: http://localhost:' + actualPort);
       }
       console.log('  API:');

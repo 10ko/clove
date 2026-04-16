@@ -1,7 +1,3 @@
-# On release, update the Homebrew tap with the binary zip URL and sha256.
-# Requires: release asset named clove-macos-arm64.zip (upload when creating the release).
-# Requires repo secret: HOMEBREW_TAP_TOKEN (PAT with write access to homebrew-clove).
-
 name: Update Homebrew tap
 
 on:
@@ -36,8 +32,22 @@ jobs:
           path: homebrew-tap
 
       - name: Update formula
+        env:
+          CLOVE_VERSION: ${{ steps.release.outputs.version }}
         run: |
+          set -euo pipefail
           cd homebrew-tap
+          VERSION="${CLOVE_VERSION}"
+          if grep -qE '^  version "' Formula/clove.rb; then
+            sed -i "s|^  version \".*\"|  version \"${VERSION}\"|" Formula/clove.rb
+          else
+            tmp="$(mktemp)"
+            awk -v ver="$VERSION" '
+              /^  homepage "/ { print; print "  version \"" ver "\""; next }
+              { print }
+            ' Formula/clove.rb > "$tmp"
+            mv "$tmp" Formula/clove.rb
+          fi
           sed -i "s|url \".*\"|url \"${{ steps.release.outputs.url }}\"|" Formula/clove.rb
           sed -i "s|sha256 \".*\"|sha256 \"${{ steps.sha.outputs.sha256 }}\"|" Formula/clove.rb
 

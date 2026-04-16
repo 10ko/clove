@@ -9,7 +9,11 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { runServer } from './server.js';
 import type { CloveApi } from './api.js';
-import { compiledCloveExecutable } from './cli/utils.js';
+import {
+  compiledCloveExecutable,
+  compiledInstallLibexecDir,
+  isCompiledBinary as isCompiledCloveBinary,
+} from './cli/utils.js';
 
 interface DaemonState {
   pid: number;
@@ -24,10 +28,6 @@ const DAEMON_FILE = path.join(CLOVE_DIR, 'daemon.json');
 function getProjectRoot(): string {
   const cliFile = fileURLToPath(import.meta.url);
   return path.resolve(path.dirname(cliFile), '..');
-}
-
-function isCompiledBinary(): boolean {
-  return path.basename(process.execPath).startsWith('clove');
 }
 
 export function readDaemonState(): DaemonState | null {
@@ -124,12 +124,12 @@ export async function runDaemonListen(): Promise<void> {
 const DAEMON_LOG = path.join(CLOVE_DIR, 'daemon.log');
 
 function spawnDaemonChild(): void {
-  const projectRoot = getProjectRoot();
-  const exe = isCompiledBinary() ? compiledCloveExecutable() : process.execPath;
+  const cwd = isCompiledCloveBinary() ? compiledInstallLibexecDir() : getProjectRoot();
+  const exe = isCompiledCloveBinary() ? compiledCloveExecutable() : process.execPath;
   const thisFile = fileURLToPath(import.meta.url);
   const cliPath = path.join(path.dirname(thisFile), 'cli.ts');
 
-  const args = isCompiledBinary()
+  const args = isCompiledCloveBinary()
     ? ['daemon', '--listen']
     : [cliPath, 'daemon', '--listen'];
 
@@ -137,7 +137,7 @@ function spawnDaemonChild(): void {
   const logFd = fs.openSync(DAEMON_LOG, 'a');
 
   const child = spawn(exe, args, {
-    cwd: projectRoot,
+    cwd,
     detached: true,
     stdio: ['ignore', logFd, logFd],
     env: { ...process.env },
