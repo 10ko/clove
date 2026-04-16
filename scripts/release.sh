@@ -13,15 +13,17 @@ Example:
 What this does:
   1) Updates package.json version
   2) Commits the version bump
-  3) Creates git tag v<version>
-  4) Builds release binary + zip asset
-  5) Pushes commit and tag
-  6) Creates a GitHub release from that tag and uploads zip
+  3) Tags v<version>
+  4) Builds the macOS binary and dist/clove-macos-arm64.zip
+  5) Computes sha256 (printed for reference; release notes include it)
+  6) Pushes commit + tag
+  7) Creates a draft GitHub release, uploads the zip, prepends sha256 to notes
+  8) Publishes the release → triggers "Update Homebrew tap" on GitHub Actions
 
 Requirements:
   - Clean git working tree
-  - Bun installed (for build:binary)
-  - gh CLI authenticated (gh auth status)
+  - Bun (for build:binary)
+  - gh CLI (gh auth login) for releases
 EOF
 }
 
@@ -128,14 +130,33 @@ if [[ ! -f "$ZIP_ASSET" ]]; then
   exit 1
 fi
 
+if ! command -v shasum >/dev/null 2>&1; then
+  echo "shasum not found (macOS). Install Xcode CLT or use openssl dgst -sha256."
+  exit 1
+fi
+ZIP_SHA256="$(shasum -a 256 "$ZIP_ASSET" | awk '{ print $1 }')"
+REPO_SLUG="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || echo "YOUR_ORG/clove")"
+ZIP_URL="https://github.com/${REPO_SLUG}/releases/download/${TAG}/clove-macos-arm64.zip"
+
+echo ""
+echo "=== Homebrew tap (Formula/clove.rb) — same bytes as the zip below ==="
+echo "  url \"${ZIP_URL}\""
+echo "  sha256 \"${ZIP_SHA256}\""
+echo ""
+
 echo "Pushing commit and tag..."
 git push origin main
 git push origin "$TAG"
 
-echo "Creating GitHub release..."
+echo "Creating draft GitHub release (zip + notes; sha256 prepended to generated notes)..."
 gh release create "$TAG" \
   "$ZIP_ASSET" \
+  --draft \
   --generate-notes \
-  --title "$TAG"
+  --title "$TAG" \
+  --notes "**clove-macos-arm64.zip SHA-256:** \`${ZIP_SHA256}\`"
 
-echo "Release created: $TAG"
+echo "Publishing release (starts Homebrew tap workflow)..."
+gh release edit "$TAG" --draft=false
+
+echo "Published $TAG — Homebrew tap should update via Actions (needs HOMEBREW_TAP_TOKEN)."
