@@ -9,6 +9,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { runServer } from './server.js';
 import type { CloveApi } from './api.js';
+import { compiledCloveExecutable } from './cli/utils.js';
 
 interface DaemonState {
   pid: number;
@@ -124,7 +125,7 @@ const DAEMON_LOG = path.join(CLOVE_DIR, 'daemon.log');
 
 function spawnDaemonChild(): void {
   const projectRoot = getProjectRoot();
-  const exe = process.execPath;
+  const exe = isCompiledBinary() ? compiledCloveExecutable() : process.execPath;
   const thisFile = fileURLToPath(import.meta.url);
   const cliPath = path.join(path.dirname(thisFile), 'cli.ts');
 

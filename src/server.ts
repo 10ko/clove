@@ -13,9 +13,10 @@ import { createLocalRuntime } from './plugins/runtime/local.js';
 import { createCursorAgent } from './plugins/agent/cursor.js';
 import { createDatabase, migrateDatabase } from './db.js';
 import { WorkspaceStore } from './store.js';
+import { isCompiledBinary, compiledInstallLibexecDir } from './cli/utils.js';
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
-const execDir = path.dirname(process.execPath);
+const execDir = isCompiledBinary() ? compiledInstallLibexecDir() : path.dirname(process.execPath);
 const possibleDashboardDirs = [
   path.resolve(serverDir, '../../dashboard/dist'),
   path.join(execDir, 'dashboard', 'dist'),

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { isCompiledBinary, openBrowser } from './utils.js';
+import { isCompiledBinary, compiledInstallLibexecDir, openBrowser } from './utils.js';
 
 export async function runDashboard(
   daemonBaseUrl: string,
@@ -12,9 +12,8 @@ export async function runDashboard(
   const exitOnClose = options?.exitOnClose ?? false;
   const dashboardChildRef = options?.dashboardChildRef;
   const cliDir = path.dirname(fileURLToPath(import.meta.url));
-  const execDir = path.dirname(process.execPath);
   const dashboardDir = isCompiledBinary()
-    ? path.join(execDir, 'dashboard')
+    ? path.join(compiledInstallLibexecDir(), 'dashboard')
     : path.join(cliDir, '..', '..', 'dashboard');
 
   if (isCompiledBinary()) {

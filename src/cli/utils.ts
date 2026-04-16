@@ -1,4 +1,5 @@
 import path from 'node:path';
+import fs from 'node:fs';
 import { spawn } from 'node:child_process';
 import { uniqueNamesGenerator, adjectives, animals } from 'unique-names-generator';
 
@@ -44,6 +45,41 @@ export function tokenize(line: string): string[] {
 
 export function isCompiledBinary(): boolean {
   return path.basename(process.execPath).startsWith('clove');
+}
+
+/**
+ * Directory that contains `clove-macos-arm64` and `dashboard/` (matches the release zip layout).
+ * Homebrew uses `bin/clove` as a wrapper; real files live in `../libexec`.
+ */
+export function compiledInstallLibexecDir(): string {
+  const execPath = process.execPath;
+  const dir = path.dirname(execPath);
+  if (path.basename(execPath) === 'clove') {
+    return path.resolve(dir, '..', 'libexec');
+  }
+  return path.resolve(dir);
+}
+
+/** Executable to spawn for `daemon --listen` (real binary, or wrapper if needed). */
+export function compiledCloveExecutable(): string {
+  const libexec = compiledInstallLibexecDir();
+  const real = path.join(libexec, 'clove-macos-arm64');
+  try {
+    if (fs.existsSync(real)) {
+      return fs.realpathSync(real);
+    }
+  } catch {
+    /* ignore */
+  }
+  const wrap = path.join(libexec, '..', 'bin', 'clove');
+  try {
+    if (fs.existsSync(wrap)) {
+      return fs.realpathSync(wrap);
+    }
+  } catch {
+    /* ignore */
+  }
+  return process.execPath;
 }
 
 export function parseSourceRepo(repo: string): { type: 'path'; path: string } | { type: 'url'; url: string } {
