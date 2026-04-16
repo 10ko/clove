@@ -14,11 +14,13 @@ What this does:
   1) Updates package.json version
   2) Commits the version bump
   3) Creates git tag v<version>
-  4) Pushes commit and tag
-  5) Creates a GitHub release from that tag
+  4) Builds release binary + zip asset
+  5) Pushes commit and tag
+  6) Creates a GitHub release from that tag and uploads zip
 
 Requirements:
   - Clean git working tree
+  - Bun installed (for build:binary)
   - gh CLI authenticated (gh auth status)
 EOF
 }
@@ -95,6 +97,7 @@ process.stdout.write(input);
 ' "$INPUT")"
 
 TAG="v${VERSION}"
+ZIP_ASSET="dist/clove-macos-arm64.zip"
 
 if git rev-parse "$TAG" >/dev/null 2>&1; then
   echo "Tag already exists: $TAG"
@@ -117,12 +120,21 @@ git commit -m "chore(release): ${TAG}"
 echo "Creating tag $TAG..."
 git tag "$TAG"
 
+echo "Building binary and zip asset..."
+bun run build:binary
+
+if [[ ! -f "$ZIP_ASSET" ]]; then
+  echo "Expected asset not found: $ZIP_ASSET"
+  exit 1
+fi
+
 echo "Pushing commit and tag..."
 git push origin main
 git push origin "$TAG"
 
 echo "Creating GitHub release..."
 gh release create "$TAG" \
+  "$ZIP_ASSET" \
   --generate-notes \
   --title "$TAG"
 
