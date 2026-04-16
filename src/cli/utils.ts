@@ -1,6 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
-import { spawn } from 'node:child_process';
+import { spawn, execSync } from 'node:child_process';
 import { uniqueNamesGenerator, adjectives, animals } from 'unique-names-generator';
 
 export function generateMemorableId(): string {
@@ -47,11 +47,61 @@ export function isCompiledBinary(): boolean {
   return path.basename(process.execPath).startsWith('clove');
 }
 
+function tryRealpath(p: string): string | null {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return null;
+  }
+}
+
+/** How the user invoked clove (absolute path to wrapper or binary when on PATH). */
+function argv0ResolvedPath(): string | null {
+  const a0 = process.argv[0];
+  if (!a0) return null;
+  if (path.isAbsolute(a0)) return a0;
+  if (a0.startsWith('./') || a0.startsWith('../')) {
+    return path.resolve(process.cwd(), a0);
+  }
+  if (process.platform === 'win32') {
+    try {
+      const out = execSync(`where ${JSON.stringify(a0)}`, { encoding: 'utf8' }).split(/\r?\n/)[0];
+      return out?.trim() || null;
+    } catch {
+      return null;
+    }
+  }
+  try {
+    const out = execSync(`command -v ${JSON.stringify(a0)}`, {
+      encoding: 'utf8',
+      shell: '/bin/sh',
+    }).trim();
+    return out || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Directory that contains `clove-macos-arm64` and `dashboard/` (matches the release zip layout).
  * Homebrew uses `bin/clove` as a wrapper; real files live in `../libexec`.
+ * Prefer argv[0] + PATH resolution: Bun's `process.execPath` can point at a path that does not
+ * work for `posix_spawn` even when the process is running.
  */
 export function compiledInstallLibexecDir(): string {
+  const fromArgv = argv0ResolvedPath();
+  if (fromArgv) {
+    const inv = tryRealpath(fromArgv) ?? fromArgv;
+    const base = path.basename(inv);
+    const dir = path.dirname(inv);
+    if (base === 'clove') {
+      return path.resolve(dir, '..', 'libexec');
+    }
+    if (base === 'clove-macos-arm64') {
+      return dir;
+    }
+  }
+
   const execPath = process.execPath;
   const dir = path.dirname(execPath);
   if (path.basename(execPath) === 'clove') {
@@ -60,25 +110,30 @@ export function compiledInstallLibexecDir(): string {
   return path.resolve(dir);
 }
 
-/** Executable to spawn for `daemon --listen` (real binary, or wrapper if needed). */
+/** Executable to spawn for `daemon --listen` (real binary, or Homebrew wrapper). */
 export function compiledCloveExecutable(): string {
   const libexec = compiledInstallLibexecDir();
+
   const real = path.join(libexec, 'clove-macos-arm64');
-  try {
-    if (fs.existsSync(real)) {
-      return fs.realpathSync(real);
-    }
-  } catch {
-    /* ignore */
+  const realRp = tryRealpath(real);
+  if (realRp && fs.statSync(realRp).isFile()) {
+    return realRp;
   }
+
   const wrap = path.join(libexec, '..', 'bin', 'clove');
-  try {
-    if (fs.existsSync(wrap)) {
-      return fs.realpathSync(wrap);
-    }
-  } catch {
-    /* ignore */
+  const wrapRp = tryRealpath(wrap);
+  if (wrapRp && fs.statSync(wrapRp).isFile()) {
+    return wrapRp;
   }
+
+  const argv0 = argv0ResolvedPath();
+  if (argv0) {
+    const ar = tryRealpath(argv0) ?? argv0;
+    if (fs.existsSync(ar) && fs.statSync(ar).isFile()) {
+      return ar;
+    }
+  }
+
   return process.execPath;
 }
 
