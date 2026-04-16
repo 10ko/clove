@@ -9,6 +9,7 @@ import { commandHelp as listHelp } from './commands/list.js';
 import { commandHelp as dashboardHelp } from './commands/dashboard-cmd.js';
 import { commandHelp as helpMeta } from './commands/help-meta.js';
 import { commandHelp as exitHelp } from './commands/exit.js';
+import { commandHelp as versionHelp } from './commands/version.js';
 import { daemonCommandHelp } from './daemon-help.js';
 
 const HELP_TITLE = 'clove – orchestrate multiple AI coding agents';
@@ -21,7 +22,7 @@ const USAGE_LINES = [
   'COMMANDS',
 ] as const;
 
-const OPTIONS_SECTION = ['', 'OPTIONS', '  -h, --help  Show this help', ''] as const;
+const OPTIONS_SECTION = ['', 'OPTIONS', '  -h, --help    Show this help', '  --version     Print clove version', ''] as const;
 
 /** Which commands contribute example lines, and in what order (edit each command’s `examples` array). */
 const EXAMPLES_ORDER: readonly CommandHelp[] = [
@@ -47,6 +48,7 @@ const FULL_HELP_COMMANDS: readonly CommandHelp[] = [
   dashboardHelp,
   daemonCommandHelp,
   helpMeta,
+  versionHelp,
   exitHelp,
 ];
 
@@ -61,6 +63,7 @@ const SHELL_HELP_ORDER: readonly CommandHelp[] = [
   deleteHelp,
   dashboardHelp,
   helpMeta,
+  versionHelp,
   exitHelp,
 ];
 

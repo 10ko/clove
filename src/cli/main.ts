@@ -19,6 +19,12 @@ export async function main(): Promise<void> {
 
   const first = rawArgs[0];
 
+  if (first === 'version' || first === '--version') {
+    const { CLOVE_VERSION } = await import('../clove-version.js');
+    console.log(CLOVE_VERSION);
+    process.exit(0);
+  }
+
   if (first === 'daemon') {
     const sub = rawArgs[1];
 
