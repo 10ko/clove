@@ -11,6 +11,7 @@ import { runSendInput } from './commands/send-input.js';
 import { runStream } from './commands/stream.js';
 import { runExit } from './commands/exit.js';
 import { runVersion } from './commands/version.js';
+import { runDaemon } from './commands/daemon-cmd.js';
 
 /** Commands valid as `clove <cmd>` one-shots (excluding global flags handled in main). */
 export const ONE_SHOT_COMMANDS = [
@@ -43,6 +44,7 @@ const handlers: Record<string, CommandHandler> = {
   exit: runExit,
   quit: runExit,
   version: runVersion,
+  daemon: runDaemon,
 };
 
 /**

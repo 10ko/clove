@@ -14,7 +14,7 @@ export interface CommandHelp {
   readonly additionalLines?: readonly string[];
   /**
    * Line for interactive shell `help` (leading `  ` is added if missing).
-   * Omit for commands that should not appear in shell help (e.g. `daemon`).
+   * Omit for commands that should not appear in shell help.
    */
   readonly shellLine?: string;
   /**

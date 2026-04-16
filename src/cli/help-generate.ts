@@ -62,6 +62,7 @@ const SHELL_HELP_ORDER: readonly CommandHelp[] = [
   resumeHelp,
   deleteHelp,
   dashboardHelp,
+  daemonCommandHelp,
   helpMeta,
   versionHelp,
   exitHelp,
