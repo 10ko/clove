@@ -95,6 +95,8 @@ export interface WorkspaceRow {
   plugin_key: string;
   prompt: string;
   session_id: string | null;
+  /** Cursor CLI `--model` when plugin is cursor; null = default. */
+  model: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -141,6 +143,12 @@ export async function migrateDatabase(db: Kysely<DatabaseSchema>): Promise<void>
   // Add session_id column to existing databases created before this migration.
   try {
     await sql`ALTER TABLE workspaces ADD COLUMN session_id TEXT`.execute(db);
+  } catch {
+    // Column already exists — safe to ignore.
+  }
+
+  try {
+    await sql`ALTER TABLE workspaces ADD COLUMN model TEXT`.execute(db);
   } catch {
     // Column already exists — safe to ignore.
   }

@@ -190,6 +190,9 @@ export function AgentDetail({ agentId, agent, onClose, onAgentChanged }: Props) 
                 <>
                   <span style={headerTagStyle}>{agent.runtimeKey}</span>
                   <span style={headerTagStyle}>{agent.pluginKey}</span>
+                  {agent.model != null && agent.model !== '' && (
+                    <span style={headerTagStyle}>{agent.model}</span>
+                  )}
                 </>
               )}
             </div>

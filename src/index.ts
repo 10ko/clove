@@ -17,7 +17,14 @@ export type {
 export { WorkspaceManager } from './workspaceManager.js';
 export type { WorkspaceManagerOptions, ArtifactKind } from './workspaceManager.js';
 export { Orchestrator, getOrchestratorVersion } from './orchestrator.js';
-export type { AgentRecord, OrchestratorOptions } from './orchestrator.js';
+export type {
+  AgentRecord,
+  OrchestratorOptions,
+  PluginFactory,
+  PluginFactoryOpts,
+} from './orchestrator.js';
+export { CURSOR_MODEL_OPTIONS } from './cursor-models.js';
+export type { CursorModelOption } from './cursor-models.js';
 export { CloveApi } from './api.js';
 export type { StartAgentParams, StartAgentResult } from './api.js';
 export { createServer, runServer } from './server.js';

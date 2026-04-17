@@ -11,6 +11,11 @@ import { Orchestrator } from './orchestrator.js';
 import { WorkspaceManager } from './workspaceManager.js';
 import { createLocalRuntime } from './plugins/runtime/local.js';
 import { createCursorAgent } from './plugins/agent/cursor.js';
+import {
+  CURSOR_MODEL_OPTIONS,
+  isAllowedCursorModelForHttp,
+  normalizeCursorModel,
+} from './cursor-models.js';
 import { createDatabase, migrateDatabase } from './db.js';
 import { WorkspaceStore } from './store.js';
 import { isCompiledBinary, compiledInstallLibexecDir } from './cli/utils.js';
@@ -103,6 +108,18 @@ export function createServer(api: CloveApi): http.Server {
         const branchName = body.branchName as string | undefined;
         const runtimeKey = (body.runtimeKey as string | undefined) ?? 'local';
         const pluginKey = (body.pluginKey as string | undefined) ?? 'cursor';
+        if (!isAllowedCursorModelForHttp(body.model)) {
+          jsonResponse(res, 400, {
+            error:
+              'Invalid model. Use GET /api/info (cursorModels), or a short slug like gpt-5.2-high (letters, digits, ., _).',
+          });
+          return;
+        }
+        const model = normalizeCursorModel(body.model);
+        if (model != null && pluginKey !== 'cursor') {
+          jsonResponse(res, 400, { error: 'model is only supported when pluginKey is "cursor"' });
+          return;
+        }
         const repo = repoUrl ?? repoPath;
         if (!repo) {
           jsonResponse(res, 400, { error: 'repoPath or repoUrl required' });
@@ -123,6 +140,7 @@ export function createServer(api: CloveApi): http.Server {
           pluginKey,
           prompt: prompt ?? '',
           ...(branchName != null && branchName !== '' && { branchName: branchName.trim() }),
+          ...(pluginKey === 'cursor' && model != null ? { model } : {}),
         });
         jsonResponse(res, 200, result);
         return;
@@ -130,7 +148,10 @@ export function createServer(api: CloveApi): http.Server {
 
       // GET /api/info
       if (req.method === 'GET' && base === 'api' && sub === 'info') {
-        jsonResponse(res, 200, { cwd: process.cwd() });
+        jsonResponse(res, 200, {
+          cwd: process.cwd(),
+          cursorModels: [...CURSOR_MODEL_OPTIONS],
+        });
         return;
       }
 
@@ -258,7 +279,8 @@ export function runServer(
       local: createLocalRuntime(),
     },
     plugins: {
-      cursor: () => createCursorAgent(),
+      cursor: (opts) =>
+        createCursorAgent(opts?.model ? { extraArgs: ['--model', opts.model] } : {}),
     },
     store,
   });

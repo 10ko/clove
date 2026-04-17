@@ -17,6 +17,8 @@ export interface StartAgentParams {
   pluginKey: string;
   prompt: string;
   branchName?: string;
+  /** Cursor CLI `--model` (non-empty only). */
+  model?: string;
 }
 
 export interface StartAgentResult {
@@ -30,13 +32,20 @@ export class CloveApi {
   constructor(private readonly orchestrator: Orchestrator) {}
 
   async startAgent(params: StartAgentParams): Promise<StartAgentResult> {
+    const opts: { branchName?: string; model?: string } = {};
+    if (params.branchName != null && params.branchName !== '') {
+      opts.branchName = params.branchName;
+    }
+    if (params.model != null && params.model.trim() !== '') {
+      opts.model = params.model.trim();
+    }
     return this.orchestrator.startAgent(
       params.agentId,
       params.sourceRepo,
       params.runtimeKey,
       params.pluginKey,
       params.prompt,
-      params.branchName != null ? { branchName: params.branchName } : undefined
+      Object.keys(opts).length > 0 ? opts : undefined
     );
   }
 

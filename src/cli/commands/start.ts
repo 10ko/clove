@@ -6,7 +6,7 @@ export const commandHelp: CommandHelp = {
   names: ['start'],
   summary: 'Start an agent (repo required; prompt optional)',
   shellLine:
-    'start --repo <path> [--agent-id <id>] [--branch <name>] [--prompt "<text>"] [--runtime local] [--agent cursor]',
+    'start --repo <path> [--model <id>] [--agent-id <id>] [--branch <name>] [--prompt "<text>"] [--runtime local] [--agent cursor]',
   examples: ['  clove start --repo . --prompt "Add tests" # one-shot command'],
 };
 
@@ -17,6 +17,7 @@ export async function runStart(rest: string[], ctx: CliRuntime): Promise<boolean
   const branchName = getArg(rest, '--branch');
   const runtimeKey = getArg(rest, '--runtime') ?? 'local';
   const pluginKey = getArg(rest, '--agent') ?? getArg(rest, '--plugin') ?? 'cursor';
+  const model = getArg(rest, '--model');
   if (!repo) {
     console.error('start requires --repo <path-or-url>');
     return false;
@@ -29,6 +30,7 @@ export async function runStart(rest: string[], ctx: CliRuntime): Promise<boolean
     pluginKey,
     prompt,
     ...(branchName != null && branchName !== '' && { branchName }),
+    ...(pluginKey === 'cursor' && model != null && model !== '' && { model }),
   });
   console.log(`Started agent ${agentId} (runtime=${runtimeKey}, agent=${pluginKey})`);
   console.log(`  workspace: ${result.path}`);

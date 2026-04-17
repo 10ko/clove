@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { uniqueNamesGenerator, adjectives, animals } from 'unique-names-generator';
-import { startAgent } from './api';
+import { CURSOR_MODEL_OPTIONS } from '../../src/cursor-models.ts';
+import { getServerInfo, startAgent, type CursorModelOption } from './api';
 
 function generateMemorableId(): string {
   return uniqueNamesGenerator({
@@ -22,6 +23,10 @@ interface Props {
 const RUNTIMES = ['local', 'docker'] as const;
 const PLUGINS = ['cursor'] as const;
 
+function bundledCursorModels(): CursorModelOption[] {
+  return CURSOR_MODEL_OPTIONS.map((o) => ({ value: o.value, label: o.label }));
+}
+
 export function StartAgentForm({ onStarted, defaultRepoPath, isOpen }: Props) {
   const [agentId, setAgentId] = useState<string>(() => generateMemorableId());
   const [branchName, setBranchName] = useState<string>('');
@@ -30,18 +35,39 @@ export function StartAgentForm({ onStarted, defaultRepoPath, isOpen }: Props) {
   const [repoPath, setRepoPath] = useState('');
   const [repoUrl, setRepoUrl] = useState('');
   const [prompt, setPrompt] = useState('');
+  const [model, setModel] = useState('');
+  const [cursorModels, setCursorModels] = useState<CursorModelOption[]>(bundledCursorModels);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const resetDefaults = useCallback(() => {
     setAgentId(generateMemorableId());
     setBranchName('');
+    setModel('');
     if (defaultRepoPath) setRepoPath(defaultRepoPath);
   }, [defaultRepoPath]);
 
   useEffect(() => {
     if (isOpen) resetDefaults();
   }, [isOpen, resetDefaults]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const info = await getServerInfo();
+        if (cancelled) return;
+        if (info.cursorModels != null && info.cursorModels.length > 0) {
+          setCursorModels(info.cursorModels);
+        }
+      } catch {
+        if (!cancelled) setCursorModels(bundledCursorModels());
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -65,6 +91,9 @@ export function StartAgentForm({ onStarted, defaultRepoPath, isOpen }: Props) {
       };
       if (isDocker) body.repoUrl = repo;
       else body.repoPath = repo;
+      if (pluginKey === 'cursor' && model.trim() !== '') {
+        body.model = model.trim();
+      }
       await startAgent(body);
       resetDefaults();
       setRepoUrl('');
@@ -141,7 +170,10 @@ export function StartAgentForm({ onStarted, defaultRepoPath, isOpen }: Props) {
           Agent
           <select
             value={pluginKey}
-            onChange={(e) => setPluginKey(e.target.value)}
+            onChange={(e) => {
+              setPluginKey(e.target.value);
+              if (e.target.value !== 'cursor') setModel('');
+            }}
             disabled={submitting}
             style={selectStyle}
           >
@@ -153,6 +185,25 @@ export function StartAgentForm({ onStarted, defaultRepoPath, isOpen }: Props) {
           </select>
         </label>
       </div>
+      {pluginKey === 'cursor' && (
+        <div style={rowStyle}>
+          <label style={labelStyle}>
+            Model
+            <select
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              disabled={submitting}
+              style={selectStyle}
+            >
+              {cursorModels.map((m) => (
+                <option key={m.value === '' ? '__default' : m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
       <div style={rowStyle}>
         <label style={labelStyle}>
           {isDocker ? 'Repo URL' : 'Repo path'}

@@ -16,6 +16,8 @@ interface InsertWorkspace {
   runtimeKey: string;
   pluginKey: string;
   prompt: string;
+  /** Persisted for resume (Cursor `--model`). */
+  model?: string | null;
 }
 
 export class WorkspaceStore {
@@ -34,6 +36,7 @@ export class WorkspaceStore {
       runtime_key: ws.runtimeKey,
       plugin_key: ws.pluginKey,
       prompt: ws.prompt,
+      model: ws.model?.trim() ? ws.model.trim() : null,
       session_id: null,
       created_at: now,
       updated_at: now,

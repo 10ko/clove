@@ -49,6 +49,9 @@ export function AgentList({ agents, selectedId, onSelect }: Props) {
                     </span>
                     <span style={cardTagStyle}>{a.runtimeKey}</span>
                     <span style={cardTagStyle}>{a.pluginKey}</span>
+                    {a.model != null && a.model !== '' && (
+                      <span style={cardTagStyle}>{a.model}</span>
+                    )}
                   </div>
                 </div>
               </div>

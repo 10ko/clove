@@ -5,6 +5,7 @@ Run multiple coding agents like a tiny mission control.
 - `clove` gives you a fast REPL for launching and steering agents.
 - `clove dashboard` gives you a live control view in the browser.
 - Start any command and Clove spins up the daemon automatically.
+- `clove version` or `clove --version` prints the installed semver (same value as `package.json` / Homebrew).
 
 ## Install
 
@@ -60,7 +61,7 @@ Press `Ctrl+C` to stop streaming and return to the prompt.
 
 ### In the REPL (`clove>`)
 
-- `start --repo <path> [--agent-id <id>] [--branch <name>] [--prompt "<text>"] [--runtime local] [--agent cursor]`
+- `start --repo <path> [--model <id>] [--agent-id <id>] [--branch <name>] [--prompt "<text>"] [--runtime local] [--agent cursor]` — with the **cursor** agent, `--model` is passed to the Cursor CLI (`agent --model … acp`). Curated options appear in the **dashboard** “Start agent” form; run `agent models` for the full current slug list.
 - `list`
 - `stream <agent-id>`
 - `send-input <agent-id> "<input>"`
@@ -68,23 +69,28 @@ Press `Ctrl+C` to stop streaming and return to the prompt.
 - `resume <agent-id>`
 - `delete <agent-id>`
 - `dashboard`
+- `daemon` / `daemon status` / `daemon stop` (see [Daemon commands](#daemon-commands); `daemon stop` exits the REPL after stopping the daemon)
+- `version`
 - `help` / `exit` / `quit`
 
 ### One-shot mode (no REPL)
 
 ```bash
-clove start --repo . --prompt "Refactor CLI help generation"
+clove start --repo . --model sonnet-4.5 --prompt "Refactor CLI help generation"
 clove list
 clove stream <agent-id>
 clove stop <agent-id>
 clove resume <agent-id>
 clove delete <agent-id>
 clove dashboard
+clove version
 ```
 
-Use `clove --help` for full command help.
+Use `clove --help` for full command help. Use `clove --version` for the semver only.
 
-## Daemon Commands
+## Daemon commands
+
+From the shell:
 
 ```bash
 clove daemon                  # ensure daemon is running and print URL
@@ -92,6 +98,8 @@ clove daemon status           # show PID, port, and health
 clove daemon stop             # stop background daemon
 clove daemon --foreground     # run daemon in foreground (dev mode)
 ```
+
+In the REPL, the same `status` / `stop` behavior is available as `daemon status` and `daemon stop`. Plain `daemon` prints the URL you are connected to. Foreground mode is not started from the REPL; use `clove daemon --foreground` in another terminal.
 
 Daemon state is stored in `~/.clove/daemon.json`.
 

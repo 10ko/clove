@@ -32,22 +32,31 @@ export interface AgentRecord {
   sourceRepo: SourceRepo;
   mainRepoRoot?: string;
   prompt: string;
+  /** Cursor CLI `--model` when set at start. */
+  model?: string;
   sessionId?: string;
   agentState?: AgentState;
   createdAt?: string;
 }
 
+/** Passed to plugin factories (e.g. Cursor `agent --model`). */
+export interface PluginFactoryOpts {
+  model?: string;
+}
+
+export type PluginFactory = (opts?: PluginFactoryOpts) => AgentPlugin;
+
 export interface OrchestratorOptions {
   workspaceManager: WorkspaceManager;
   runtimes: Record<string, AgentRuntime>;
-  plugins: Record<string, () => AgentPlugin>;
+  plugins: Record<string, PluginFactory>;
   store?: WorkspaceStore;
 }
 
 export class Orchestrator {
   private readonly workspaceManager: WorkspaceManager;
   private readonly runtimes: Record<string, AgentRuntime>;
-  private readonly plugins: Record<string, () => AgentPlugin>;
+  private readonly plugins: Record<string, PluginFactory>;
   private readonly store?: WorkspaceStore;
   private readonly agents = new Map<AgentId, AgentRecord>();
 
@@ -81,6 +90,7 @@ export class Orchestrator {
         sourceRepo,
         mainRepoRoot: row.main_repo_root ?? undefined,
         prompt: row.prompt,
+        ...(row.model != null && row.model !== '' ? { model: row.model } : {}),
         sessionId: row.session_id ?? undefined,
         createdAt: row.created_at,
       });
@@ -93,7 +103,7 @@ export class Orchestrator {
     runtimeKey: string,
     pluginKey: string,
     prompt: string,
-    options?: { branchName?: string }
+    options?: { branchName?: string; model?: string }
   ): Promise<{
     path: string;
     branch: string;
@@ -112,6 +122,9 @@ export class Orchestrator {
     const { path: workspacePath, branch, mainRepoRoot } =
       await this.workspaceManager.createWorkspace(agentId, sourceRepo, runtimeType, options);
 
+    const modelNorm =
+      options?.model != null && options.model.trim() !== '' ? options.model.trim() : undefined;
+
     const record: AgentRecord = {
       agentId,
       status: 'running',
@@ -122,6 +135,7 @@ export class Orchestrator {
       sourceRepo,
       mainRepoRoot,
       prompt,
+      ...(modelNorm != null ? { model: modelNorm } : {}),
       createdAt: new Date().toISOString(),
     };
     this.agents.set(agentId, record);
@@ -136,9 +150,10 @@ export class Orchestrator {
       runtimeKey,
       pluginKey,
       prompt,
+      model: modelNorm ?? null,
     });
 
-    const plugin = pluginFactory();
+    const plugin = pluginFactory(modelNorm != null ? { model: modelNorm } : undefined);
     const store = this.store;
     await runtime.start(agentId, workspacePath, plugin, prompt, {
       onSessionCreated: (sessionId) => {
@@ -177,7 +192,7 @@ export class Orchestrator {
     }
 
     const effectivePrompt = prompt ?? '';
-    const plugin = pluginFactory();
+    const plugin = pluginFactory(record.model != null ? { model: record.model } : undefined);
     const store = this.store;
     await runtime.start(agentId, record.workspacePath, plugin, effectivePrompt, {
       resumeSessionId: record.sessionId,

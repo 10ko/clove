@@ -430,7 +430,7 @@ export function createCursorAgent(options: CursorAgentOptions = {}): AgentPlugin
       const session = acpSessionByAgent.get(agentId);
       if (!session) {
         console.error('[clove] send-input: no ACP session for', agentId, '(known:', [...acpSessionByAgent.keys()], ')');
-        return '\n[No active session for this agent; it may have exited. Start a new agent.]\n';
+        return '\n[No active session — the agent process may have exited. Try resuming.]\n';
       }
       session.pushUserMessage?.(input);
       try {

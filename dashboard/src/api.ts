@@ -9,6 +9,8 @@ export interface AgentRecord {
   branch?: string;
   runtimeKey: string;
   pluginKey: string;
+  /** Cursor `agent --model` when set at start. */
+  model?: string;
   /** Agent phase: "busy" (prompt in flight) or "waiting" (ready for input). Set when runtime supports it. */
   agentState?: 'busy' | 'waiting';
 }
@@ -28,6 +30,8 @@ interface StartAgentBody {
   branchName?: string;
   runtimeKey?: string;
   pluginKey?: string;
+  /** Cursor model id (must match server allowlist from GET /api/info). */
+  model?: string;
 }
 
 interface StartAgentResponse {
@@ -43,14 +47,20 @@ export type StreamEnvelope =
   | { type: 'agent'; payload: string }
   | { type: 'user'; payload: string };
 
+export interface CursorModelOption {
+  value: string;
+  label: string;
+}
+
 interface ServerInfo {
   cwd: string;
+  cursorModels?: CursorModelOption[];
 }
 
 export async function getServerInfo(): Promise<ServerInfo> {
   const res = await fetch(`${API_BASE}/info`);
   if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  return res.json() as Promise<ServerInfo>;
 }
 
 export async function listAgents(): Promise<AgentRecord[]> {

@@ -38,6 +38,9 @@ export class HttpCloveApi implements CliApi {
     if (params.branchName != null && params.branchName !== '') {
       body.branchName = params.branchName;
     }
+    if (params.model != null && params.model !== '') {
+      body.model = params.model;
+    }
     const res = await fetch(this.url('/api/agents/start'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
