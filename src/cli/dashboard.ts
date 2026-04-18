@@ -17,8 +17,9 @@ export async function runDashboard(
     : path.join(cliDir, '..', '..', 'dashboard');
 
   if (isCompiledBinary()) {
-    console.log(`Dashboard at ${daemonBaseUrl}\n`);
-    openBrowser(daemonBaseUrl);
+    const dashboardUrl = new URL('/', daemonBaseUrl).href;
+    console.log(`Dashboard: ${dashboardUrl}\n`);
+    openBrowser(dashboardUrl);
     console.log('Dashboard opened in browser.\n');
     if (exitOnClose) {
       await new Promise<void>(() => {});

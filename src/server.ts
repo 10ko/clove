@@ -47,7 +47,15 @@ function resolveDashboardDir(): string | null {
   return possibleDashboardDirs.find((d) => fs.existsSync(d)) ?? null;
 }
 
-const DASHBOARD_DIR = resolveDashboardDir();
+/** Lazy so embedded extraction errors can be logged once; same resolution as before. */
+let dashboardDirMemo: string | null | undefined;
+
+function getDashboardDir(): string | null {
+  if (dashboardDirMemo === undefined) {
+    dashboardDirMemo = resolveDashboardDir();
+  }
+  return dashboardDirMemo;
+}
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -98,6 +106,17 @@ export function createServer(api: CloveApi): http.Server {
     const id = pathParts[2];
 
     try {
+      // Dashboard root (explicit): avoids any edge case where path parsing skips static handler
+      if (req.method === 'GET' && (pathname === '/' || pathname === '')) {
+        const dash = getDashboardDir();
+        const indexHtml = dash != null ? path.join(dash, 'index.html') : null;
+        if (indexHtml != null && fs.existsSync(indexHtml)) {
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          fs.createReadStream(indexHtml).pipe(res);
+          return;
+        }
+      }
+
       // POST /api/agents/start
       if (req.method === 'POST' && base === 'api' && sub === 'agents' && pathParts[2] === 'start') {
         const body = await parseBody(req);
@@ -228,11 +247,12 @@ export function createServer(api: CloveApi): http.Server {
         return;
       }
 
-      // Dashboard: serve static files
-      if (req.method === 'GET' && DASHBOARD_DIR != null && fs.existsSync(DASHBOARD_DIR)) {
-        const filePath = pathParts.filter(Boolean).length > 0 ? path.join(DASHBOARD_DIR, ...pathParts.filter(Boolean)) : path.join(DASHBOARD_DIR, 'index.html');
+      // Dashboard: serve static files (assets, etc.)
+      const dashRoot = getDashboardDir();
+      if (req.method === 'GET' && dashRoot != null && fs.existsSync(dashRoot)) {
+        const filePath = pathParts.filter(Boolean).length > 0 ? path.join(dashRoot, ...pathParts.filter(Boolean)) : path.join(dashRoot, 'index.html');
         const resolved = path.resolve(filePath);
-        const relative = path.relative(DASHBOARD_DIR, resolved);
+        const relative = path.relative(dashRoot, resolved);
         if (!relative.startsWith('..') && !path.isAbsolute(relative) && fs.existsSync(resolved)) {
           const stat = fs.statSync(resolved);
           if (stat.isFile()) {
@@ -248,7 +268,7 @@ export function createServer(api: CloveApi): http.Server {
             return;
           }
         }
-        const indexHtml = path.join(DASHBOARD_DIR, 'index.html');
+        const indexHtml = path.join(dashRoot, 'index.html');
         if (fs.existsSync(indexHtml)) {
           res.writeHead(200, { 'Content-Type': 'text/html' });
           fs.createReadStream(indexHtml).pipe(res);
@@ -302,8 +322,13 @@ export function runServer(
 
     startup().then(() => {
       console.log(`Clove server at http://localhost:${actualPort}`);
-      if (DASHBOARD_DIR != null && fs.existsSync(DASHBOARD_DIR)) {
-        console.log('  Dashboard: http://localhost:' + actualPort);
+      const dash = getDashboardDir();
+      if (dash != null && fs.existsSync(dash)) {
+        console.log('  Dashboard: http://localhost:' + actualPort + '/');
+      } else {
+        console.warn(
+          '[clove] Dashboard UI not found (embedded zip failed or missing dashboard/dist next to the binary). GET / returns 404; API under /api still works.',
+        );
       }
       console.log('  API:');
       console.log('  GET  /api/info              — server info (cwd)');
